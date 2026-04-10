@@ -629,6 +629,10 @@ function genId(){return Math.random().toString(36).slice(2,9)+Date.now().toStrin
 function nowT(){return new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 function todayStr(){const d=new Date();return`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;}
 function thisMonthStr(){const d=new Date();return`${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;}
+function parseDateStr(s){const p=s.split('/');return p.length===3?new Date(p[2],p[1]-1,p[0]):new Date(0);}
+function dateToInput(s){const p=s.split('/');return p.length===3?`${p[2]}-${p[1]}-${p[0]}`:'';} // DD/MM/YYYY → YYYY-MM-DD
+function inputToDate(s){if(!s)return new Date(0);const p=s.split('/');if(p.length===3)return new Date(p[2],p[1]-1,p[0]);const q=s.split('-');return q.length===3?new Date(q[0],q[1]-1,q[2]):new Date(0);}
+function inputValToDateStr(v){if(!v)return'';const p=v.split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:'';} // YYYY-MM-DD → DD/MM/YYYY
 function formatDateLabel(dateStr){
   // dateStr = "DD/MM/YYYY" → "Segunda, 09/04"
   if(!dateStr) return'';
@@ -680,6 +684,10 @@ const S={
   resumoView: 'geral',
   resumoDay: new Date().getDay(),
   ordersMonth: 'todos',
+  // Pedido avulso (admin)
+  avulsoName:'',avulsoCompanyId:'',avulsoMeal:'almoco',avulsoDay:new Date().getDay(),avulsoObs:'',avulsoSel:new Set(),
+  // PDF date range
+  pdfDateFrom:'',pdfDateTo:'',
   menu: buildEmptyMenu(),
   cutoff:{almoco:'10:30',jantar:'17:00'}
 };
@@ -1381,7 +1389,7 @@ function rAdminOrders(){
 
   </div>
 
-  <!-- Filtro por mês + exportar -->
+  <!-- Filtro por mês + exportar + pedido avulso -->
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
     <div style="display:flex;align-items:center;gap:8px">
       <label style="font-size:12px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.4px">Período:</label>
@@ -1392,6 +1400,7 @@ function rAdminOrders(){
       </select>
     </div>
     <button class="btn btn-outline btn-sm" data-act="open-pdf">📄 Exportar relatório</button>
+    <button class="btn btn-primary btn-sm" data-act="open-avulso">➕ Pedido avulso</button>
   </div>
 
   <!-- Pedidos agrupados por data -->
@@ -1845,6 +1854,7 @@ function rOverlay(){
   if(S.overlay==='order-detail') return rOrderDetailModal();
   if(S.overlay==='pdf')          return rPDFModal();
   if(S.overlay==='copy-day')     return rCopyDayModal();
+  if(S.overlay==='avulso')       return rAvulsoModal();
   return '';
 }
 
@@ -2050,13 +2060,119 @@ function rOrderDetailModal(){
   </div></div>`;
 }
 
+function rAvulsoModal(){
+  const cats=S.menu[S.avulsoMeal]?.[S.avulsoDay]||{};
+  const days=DAYS.map((d,i)=>`<div class="day-pill${S.avulsoDay===i?' act':''}" data-avulsday="${i}">${d}</div>`).join('');
+  const menuH=Object.entries(cats).map(([cat,items])=>`
+    <div class="cat-label" style="margin-top:12px">${cat}</div>
+    ${items.length===0
+      ?`<div style="font-size:12px;color:var(--ink3);padding:8px;background:var(--cream);border-radius:var(--r-sm)">Sem itens cadastrados</div>`
+      :`<div style="display:flex;flex-direction:column;gap:6px">${items.map(it=>`
+        <div class="menu-card${S.avulsoSel.has(it.id)?' sel':''}" data-avulsoitem="${it.id}" style="padding:10px 12px">
+          <span class="mc-icon" style="font-size:20px">${it.icon}</span>
+          <div style="flex:1"><div class="mc-name">${esc(it.name)}</div>${it.desc?`<div class="mc-desc">${esc(it.desc)}</div>`:''}</div>
+          <div class="mc-check">${S.avulsoSel.has(it.id)?'✓':''}</div>
+        </div>`).join('')}</div>`}`).join('');
+
+  return`<div class="modal-overlay" data-close="overlay"><div class="modal wide">
+    <div class="modal-title">➕ Pedido avulso</div>
+    <div class="modal-sub">Para motoristas, terceirizados e visitantes — sem necessidade de cadastro</div>
+
+    <!-- Nome + Empresa -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px">
+      <div class="fg"><label class="fl">Nome da pessoa</label>
+        <input class="fi" id="avulso-name" value="${esc(S.avulsoName)}" placeholder="Ex: João Motorista"/>
+      </div>
+      <div class="fg"><label class="fl">Empresa</label>
+        <select class="fi" id="avulso-company">
+          <option value="">Selecione a empresa</option>
+          ${S.companies.map(c=>`<option value="${c.id}"${S.avulsoCompanyId===c.id?' selected':''}>${esc(c.name)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+
+    <!-- Refeição + Dia -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <div class="meal-toggle">
+        <button class="mt-btn${S.avulsoMeal==='almoco'?' act':''}" data-avulsmeal="almoco">☀️ Almoço</button>
+        <button class="mt-btn${S.avulsoMeal==='jantar'?' act':''}" data-avulsmeal="jantar">🌙 Jantar</button>
+      </div>
+      <div class="day-scroll" style="flex:1">${days}</div>
+    </div>
+
+    <!-- Itens do cardápio -->
+    <div style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r);padding:12px;background:var(--cream);margin-bottom:14px">
+      ${Object.values(cats).flat().length===0
+        ?`<div style="text-align:center;color:var(--ink3);padding:20px;font-size:13px">Nenhum item no cardápio para este dia/refeição</div>`
+        :menuH}
+    </div>
+
+    <!-- Observações -->
+    <div class="fg"><label class="fl">Observações (opcional)</label>
+      <textarea class="fi" id="avulso-obs" rows="2" placeholder="Restrições alimentares, preferências..." style="resize:none">${esc(S.avulsoObs)}</textarea>
+    </div>
+
+    <!-- Resumo seleção -->
+    ${S.avulsoSel.size>0?`<div style="background:var(--cream2);border-radius:var(--r-sm);padding:10px 13px;font-size:13px;margin-bottom:4px;color:var(--ink2)">
+      <b>${S.avulsoSel.size} item${S.avulsoSel.size!==1?'s':''} selecionado${S.avulsoSel.size!==1?'s':''}:</b>
+      ${(()=>{const nomes=[];Object.values(cats).flat().forEach(it=>{if(S.avulsoSel.has(it.id))nomes.push(esc(it.name));});return nomes.join(', ');})()}
+    </div>`:''}
+
+    <div class="modal-footer">
+      <button class="btn btn-primary" style="flex:1" data-act="confirm-avulso">✓ Confirmar pedido avulso</button>
+      <button class="btn btn-outline" data-close="overlay">Cancelar</button>
+    </div>
+  </div></div>`;
+}
+
 function rPDFModal(){
-  return`<div class="modal-overlay" data-close="overlay"><div class="modal" style="text-align:center;max-width:360px">
-    <div style="font-size:52px;margin-bottom:14px">📄</div>
-    <div class="modal-title">Relatório de pedidos</div>
-    <div class="modal-sub">${S.orders.length} pedido${S.orders.length!==1?'s':''} registrado${S.orders.length!==1?'s':''}</div>
-    <button class="btn btn-primary btn-w" style="margin-bottom:8px" data-act="download-pdf">📥 Gerar e abrir PDF</button>
-    <button class="btn btn-outline btn-w" data-close="overlay">Cancelar</button>
+  const today=todayStr();
+  const thisMonth=thisMonthStr();
+  // Default: primeiro e último dia do mês atual
+  const now=new Date();
+  const firstDay=`01/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
+  const lastDay=`${new Date(now.getFullYear(),now.getMonth()+1,0).getDate()}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
+  const fromVal=S.pdfDateFrom||firstDay;
+  const toVal=S.pdfDateTo||lastDay;
+  const allActive=S.orders.filter(o=>o.status!=='cancelado');
+  return`<div class="modal-overlay" data-close="overlay"><div class="modal">
+    <div class="modal-title">📄 Exportar relatório</div>
+    <div class="modal-sub">Configure o período e gere o relatório completo</div>
+
+    <!-- Período -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div class="fg" style="margin-bottom:0"><label class="fl">Data inicial</label>
+        <input class="fi" type="date" id="pdf-from" value="${dateToInput(fromVal)}"/>
+      </div>
+      <div class="fg" style="margin-bottom:0"><label class="fl">Data final</label>
+        <input class="fi" type="date" id="pdf-to" value="${dateToInput(toVal)}"/>
+      </div>
+    </div>
+
+    <!-- Preview rápido -->
+    <div style="background:var(--cream2);border-radius:var(--r);padding:12px 14px;margin-bottom:16px;font-size:13px">
+      <div style="font-weight:700;margin-bottom:6px;color:var(--ink)">📊 Prévia do período selecionado</div>
+      ${(()=>{
+        const from=inputToDate(fromVal),to=inputToDate(toVal);
+        const filtered=allActive.filter(o=>{
+          if(!o.date)return true;
+          const d=parseDateStr(o.date);
+          return d>=from&&d<=to;
+        });
+        const almocos=filtered.filter(o=>o.meal==='Almoço').length;
+        const jantares=filtered.filter(o=>o.meal==='Jantar').length;
+        return`<div style="display:flex;gap:16px;flex-wrap:wrap">
+          <span>📋 <b>${filtered.length}</b> pedidos</span>
+          <span>☀️ <b>${almocos}</b> almoços</span>
+          <span>🌙 <b>${jantares}</b> jantares</span>
+        </div>`;
+      })()}
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-primary" style="flex:1" data-act="download-pdf">📥 Gerar PDF</button>
+      <button class="btn btn-outline" data-close="overlay">Cancelar</button>
+    </div>
   </div></div>`;
 }
 
@@ -2074,7 +2190,25 @@ function bindEvents(){
   document.querySelectorAll('[data-day]').forEach(el=>el.addEventListener('click',()=>{S.day=parseInt(el.dataset.day);render();}));
   document.querySelectorAll('[data-item]').forEach(el=>el.addEventListener('click',()=>{const id=el.dataset.item;if(S.sel.has(id))S.sel.delete(id);else S.sel.add(id);render();}));
   document.querySelectorAll('[data-color]').forEach(el=>el.addEventListener('click',()=>{S.obColor=el.dataset.color;render();}));
-  document.querySelectorAll('[data-resumomeal]').forEach(el=>el.addEventListener('click',()=>{S.resumoMeal=el.dataset.resumomeal;render();}));
+  document.querySelectorAll('[data-avulsmeal]').forEach(el=>el.addEventListener('click',()=>{S.avulsoMeal=el.dataset.avulsmeal;S.avulsoSel=new Set();render();}));
+  document.querySelectorAll('[data-avulsday]').forEach(el=>el.addEventListener('click',()=>{S.avulsoDay=parseInt(el.dataset.avulsday);S.avulsoSel=new Set();render();}));
+  document.querySelectorAll('[data-avulsoitem]').forEach(el=>el.addEventListener('click',()=>{
+    const id=el.dataset.avulsoitem;
+    if(S.avulsoSel.has(id))S.avulsoSel.delete(id);else S.avulsoSel.add(id);
+    render();
+  }));
+  // PDF date inputs
+  const pdfFrom=document.getElementById('pdf-from');
+  const pdfTo=document.getElementById('pdf-to');
+  if(pdfFrom) pdfFrom.addEventListener('change',e=>{S.pdfDateFrom=inputValToDateStr(e.target.value);render();});
+  if(pdfTo)   pdfTo.addEventListener('change',e=>{S.pdfDateTo=inputValToDateStr(e.target.value);render();});
+  // Avulso fields
+  const an=document.getElementById('avulso-name');
+  if(an) an.addEventListener('input',e=>{S.avulsoName=e.target.value;});
+  const ac=document.getElementById('avulso-company');
+  if(ac) ac.addEventListener('change',e=>{S.avulsoCompanyId=e.target.value;});
+  const ao=document.getElementById('avulso-obs');
+  if(ao) ao.addEventListener('input',e=>{S.avulsoObs=e.target.value;});
   document.querySelectorAll('[data-resumoview]').forEach(el=>el.addEventListener('click',()=>{S.resumoView=el.dataset.resumoview;render();}));
   document.querySelectorAll('[data-resumoday]').forEach(el=>el.addEventListener('click',()=>{S.resumoDay=parseInt(el.dataset.resumoday);render();}));
   const omf=document.getElementById('orders-month-filter');
@@ -2599,12 +2733,160 @@ function act(a){
     <button class="btn" onclick="window.print()">🖨️ Imprimir</button></body></html>`;
     const w=window.open('','_blank');if(w){w.document.write(htmlOut);w.document.close();setTimeout(()=>w.print(),600);}
   }
+  else if(a==='open-avulso'){
+    S.avulsoName='';S.avulsoCompanyId=S.companies[0]?.id||'';
+    S.avulsoMeal='almoco';S.avulsoDay=new Date().getDay();
+    S.avulsoObs='';S.avulsoSel=new Set();
+    S.overlay='avulso';render();
+  }
+  else if(a==='confirm-avulso'){
+    const nameEl=document.getElementById('avulso-name');
+    const compEl=document.getElementById('avulso-company');
+    const obsEl=document.getElementById('avulso-obs');
+    const name=(nameEl?.value||S.avulsoName).trim();
+    const companyId=compEl?.value||S.avulsoCompanyId;
+    const obs=obsEl?.value||S.avulsoObs;
+    if(!name){alert('Digite o nome da pessoa.');return;}
+    if(!companyId){alert('Selecione a empresa.');return;}
+    if(S.avulsoSel.size===0){alert('Selecione ao menos um item do cardápio.');return;}
+    const co=S.companies.find(c=>c.id===companyId);
+    const cats=S.menu[S.avulsoMeal]?.[S.avulsoDay]||{};
+    const items=[];
+    Object.values(cats).flat().forEach(it=>{if(S.avulsoSel.has(it.id))items.push(it.name);});
+    const now=new Date();
+    const dateStr=`${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
+    const monthStr=`${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
+    const oid=genId();
+    const order={
+      id:oid,userId:'admin-avulso',name,
+      company:co?.name||'',companyId,
+      meal:S.avulsoMeal==='almoco'?'Almoço':'Jantar',
+      day:DAYSF[S.avulsoDay],
+      items:items.join(', '),obs:obs.trim(),
+      status:'confirmado',time:nowT(),
+      date:dateStr,month:monthStr,
+      isNew:true,avulso:true
+    };
+    S.orders.unshift(order);
+    if(db&&rid()){
+      db.doc(`mh/${rid()}/orders/${oid}`).set({...order,ts:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn(e));
+    }
+    S.avulsoSel=new Set();S.avulsoName='';S.avulsoObs='';
+    S.overlay=null;render();
+    showToast('✅','Pedido avulso criado!',`${name} · ${co?.name||''} · ${S.avulsoMeal==='almoco'?'Almoço':'Jantar'}`,null);
+  }
   else if(a==='open-pdf'){S.overlay='pdf';render();}
   else if(a==='download-pdf'){
     const r=S.rest||{name:'Restaurante'};
-    const rows=S.orders.map(o=>`<tr><td>${o.time||''}</td><td>${esc(o.name)}</td><td>${esc(o.company)}</td><td>${esc(o.meal)} · ${esc(o.day)}</td><td>${esc(o.items)}</td><td style="color:${o.status==='cancelado'?'#C62828':'#2E7D32'}">${o.status}</td></tr>`).join('');
-    const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/><title>Pedidos</title><style>body{font-family:sans-serif;padding:32px;color:#1A1208;max-width:960px;margin:0 auto}h1{font-size:22px;margin-bottom:4px}p{color:#5C4A30;margin-bottom:24px;font-size:14px}table{width:100%;border-collapse:collapse;font-size:13px}th{background:#1A1208;color:#FBF7EE;padding:10px 12px;text-align:left}td{padding:8px 12px;border-bottom:1px solid #e0d8c8}tr:nth-child(even) td{background:#FBF7EE}.btn{margin-top:20px;padding:10px 22px;background:#1A1208;color:#FBF7EE;border:none;border-radius:8px;font-size:14px;cursor:pointer}@media print{.btn{display:none}}</style></head><body><h1>${esc(r.name)} — Relatório de Pedidos</h1><p>Gerado em ${new Date().toLocaleDateString('pt-BR')} às ${nowT()}</p><table><thead><tr><th>Hora</th><th>Colaborador</th><th>Empresa</th><th>Refeição</th><th>Itens</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table><button class="btn" onclick="window.print()">🖨️ Imprimir</button></body></html>`;
-    const w=window.open('','_blank');if(w){w.document.write(html);w.document.close();setTimeout(()=>w.print(),600);}
+    // Get date range from modal inputs or state
+    const fromRaw=document.getElementById('pdf-from')?.value;
+    const toRaw=document.getElementById('pdf-to')?.value;
+    const fromStr=fromRaw?inputValToDateStr(fromRaw):(S.pdfDateFrom||'');
+    const toStr=toRaw?inputValToDateStr(toRaw):(S.pdfDateTo||'');
+    const fromDate=fromStr?parseDateStr(fromStr):new Date(0);
+    const toDate=toStr?parseDateStr(toStr):new Date(9999,11,31);
+
+    // Filter orders by date range
+    const filtered=S.orders.filter(o=>{
+      if(o.status==='cancelado') return false;
+      if(!o.date) return true; // include old orders without date
+      const d=parseDateStr(o.date);
+      return d>=fromDate && d<=toDate;
+    });
+
+    // Group by date for the report
+    const byDate={};
+    filtered.forEach(o=>{
+      const k=o.date||o.day||'Sem data';
+      if(!byDate[k]) byDate[k]=[];
+      byDate[k].push(o);
+    });
+    const sortedDates=Object.keys(byDate).sort((a,b)=>{
+      const p=s=>{const q=s.split('/');return q.length===3?new Date(q[2],q[1]-1,q[0]):new Date(0);};
+      return p(a)-p(b);
+    });
+
+    // Totals
+    const totalAlmoco=filtered.filter(o=>o.meal==='Almoço').length;
+    const totalJantar=filtered.filter(o=>o.meal==='Jantar').length;
+
+    // Daily counts
+    const dailyCounts=sortedDates.map(d=>{
+      const list=byDate[d];
+      const a=list.filter(o=>o.meal==='Almoço').length;
+      const j=list.filter(o=>o.meal==='Jantar').length;
+      const label=d.length===10?formatDateLabel(d):d;
+      return`<tr><td>${esc(label)}</td><td style="text-align:center">${list.length}</td><td style="text-align:center">${a}</td><td style="text-align:center">${j}</td></tr>`;
+    }).join('');
+
+    // All orders rows grouped by date
+    const orderRows=sortedDates.map(d=>{
+      const list=byDate[d];
+      const label=d.length===10?formatDateLabel(d):d;
+      const header=`<tr style="background:#f0e8d0"><td colspan="6" style="font-weight:700;padding:10px 12px;font-size:13px">📅 ${esc(label)} — ${list.length} pedido${list.length!==1?'s':''}</td></tr>`;
+      const rows=list.map(o=>`<tr${o.avulso?' style="background:#FFF8E8"':''}>
+        <td>${o.time||''}</td>
+        <td>${esc(o.name)}${o.avulso?' <span style="background:#F5E6C0;color:#9A6C10;font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700">AVULSO</span>':''}</td>
+        <td>${esc(o.company)}</td>
+        <td>${o.meal==='Almoço'?'☀️':'🌙'} ${esc(o.meal)}</td>
+        <td>${esc(o.items)}</td>
+        <td>${o.obs?esc(o.obs):''}</td>
+      </tr>`).join('');
+      return header+rows;
+    }).join('');
+
+    const periodLabel=fromStr&&toStr?`${fromStr} a ${toStr}`:fromStr||toStr||'Todos os períodos';
+
+    const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
+    <title>Relatório — ${esc(r.name)}</title>
+    <style>
+      body{font-family:sans-serif;padding:28px;color:#1A1208;max-width:1000px;margin:0 auto;font-size:13px}
+      h1{font-size:22px;margin-bottom:4px}
+      h2{font-size:16px;margin:24px 0 10px;border-bottom:2px solid #1A1208;padding-bottom:4px}
+      p{color:#5C4A30;font-size:13px;margin-bottom:16px}
+      table{width:100%;border-collapse:collapse;margin-bottom:8px}
+      th{background:#1A1208;color:#FBF7EE;padding:8px 12px;text-align:left;font-size:12px}
+      td{padding:7px 12px;border-bottom:1px solid #e0d8c8;font-size:12.5px}
+      tr:nth-child(even) td{background:#FBF7EE}
+      .summary{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+      .sum-box{background:#F0E8D0;border-radius:8px;padding:12px 18px;text-align:center}
+      .sum-val{font-size:28px;font-weight:700;color:#1A1208}
+      .sum-lbl{font-size:11px;color:#5C4A30;margin-top:2px}
+      .btn{margin-top:20px;padding:10px 22px;background:#1A1208;color:#FBF7EE;border:none;border-radius:8px;font-size:14px;cursor:pointer}
+      @media print{.btn{display:none}body{padding:16px}.sum-box{border:1px solid #ccc}}
+    </style></head>
+    <body>
+      <h1>🍽️ ${esc(r.name)} — Relatório de Pedidos</h1>
+      <p>Período: <b>${esc(periodLabel)}</b> · Gerado em ${new Date().toLocaleDateString('pt-BR')} às ${nowT()}</p>
+
+      <!-- RESUMO GERAL -->
+      <h2>📊 Resumo geral</h2>
+      <div class="summary">
+        <div class="sum-box"><div class="sum-val">${filtered.length}</div><div class="sum-lbl">Total de pedidos</div></div>
+        <div class="sum-box"><div class="sum-val">${totalAlmoco}</div><div class="sum-lbl">☀️ Total almoços</div></div>
+        <div class="sum-box"><div class="sum-val">${totalJantar}</div><div class="sum-lbl">🌙 Total jantares</div></div>
+        <div class="sum-box"><div class="sum-val">${filtered.filter(o=>o.avulso).length}</div><div class="sum-lbl">Pedidos avulsos</div></div>
+      </div>
+
+      <!-- PEDIDOS POR DIA -->
+      <h2>📅 Quantidade de pedidos por dia</h2>
+      <table>
+        <thead><tr><th>Data</th><th style="text-align:center">Total</th><th style="text-align:center">☀️ Almoços</th><th style="text-align:center">🌙 Jantares</th></tr></thead>
+        <tbody>${dailyCounts||'<tr><td colspan="4" style="text-align:center;color:#999">Nenhum pedido no período</td></tr>'}</tbody>
+      </table>
+
+      <!-- LISTA COMPLETA -->
+      <h2>📋 Lista completa de pedidos</h2>
+      <table>
+        <thead><tr><th>Hora</th><th>Colaborador</th><th>Empresa</th><th>Refeição</th><th>Itens</th><th>Obs</th></tr></thead>
+        <tbody>${orderRows||'<tr><td colspan="6" style="text-align:center;color:#999">Nenhum pedido no período</td></tr>'}</tbody>
+      </table>
+
+      <button class="btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+    </body></html>`;
+
+    const w=window.open('','_blank');
+    if(w){w.document.write(html);w.document.close();setTimeout(()=>w.print(),700);}
     S.overlay=null;render();
   }
 }
