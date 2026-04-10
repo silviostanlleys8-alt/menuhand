@@ -2833,63 +2833,45 @@ window.render=function(){
   const prevScreen=S._lastScreen;
   _origRender();
   injectMobileNav();
-  // Saudação ao entrar no app pela primeira vez
   if(S.screen==='app' && prevScreen!=='app'){
     VOZ.saudacao();
   }
   S._lastScreen=S.screen;
 };
 
-// Hook: lê item ao selecionar/desselecionar
-const _origAct=act;
-function act(a){
-  // Item selecionado no cardápio
-  if(a && !a.includes('${') ){
-    if(S.screen==='app' && S.atab==='home'){
-      // data-item click — item being toggled
-      // handled below via data-item listener override
-    }
-    // Pedido confirmado
-    if(a==='confirm-order'){
-      const cats=S.menu[S.meal]||{};
-      const nomes=[];
-      Object.values(cats).flat().forEach(it=>{if(S.sel.has(it.id))nomes.push(it.name.replace(/^[\p{Emoji}\s]+/u,'').trim()||it.name);});
-      // Executa a ação original
-      _origAct(a);
-      // Voz de bom apetite (após breve delay para o overlay aparecer)
-      setTimeout(()=>VOZ.pedidoConfirmado(S._cn||S.confirmName), 200);
-      return;
-    }
-    // Abre modal de confirmação
-    if(a==='open-order'){
-      _origAct(a);
-      setTimeout(()=>VOZ.confirmarPedido(S.sel.size), 300);
-      return;
-    }
-  }
-  _origAct(a);
-}
-
-// Hook específico para item toggle — lê o nome do item
-const _origBind=bindEvents;
+// Hook: voz nos itens do cardápio — rebind após cada render
+const _origBindEvents=bindEvents;
 bindEvents=function(){
-  _origBind();
-  // Re-bind data-item com voz
+  _origBindEvents();
+  // Re-bind data-item com leitura de voz
   document.querySelectorAll('[data-item]').forEach(el=>{
-    // Remove listeners antigos clonando o elemento
     const fresh=el.cloneNode(true);
-    el.parentNode&&el.parentNode.replaceChild(fresh,el);
+    if(el.parentNode) el.parentNode.replaceChild(fresh,el);
     fresh.addEventListener('click',()=>{
       const id=fresh.dataset.item;
-      // Achar nome do item
       let nome='';
-      Object.values(S.menu[S.meal]||{}).flat().forEach(it=>{if(it.id===id)nome=it.name.replace(/^[\p{Emoji}\s]+/u,'').trim()||it.name;});
-      const jaSelected=S.sel.has(id);
-      if(jaSelected){S.sel.delete(id);if(nome)VOZ.itemRemovido(nome);}
+      Object.values(S.menu[S.meal]||{}).flat().forEach(it=>{
+        if(it.id===id) nome=it.name.replace(/^[\p{Emoji}\s]+/u,'').trim()||it.name;
+      });
+      if(S.sel.has(id)){S.sel.delete(id);if(nome)VOZ.itemRemovido(nome);}
       else{S.sel.add(id);if(nome)VOZ.itemSelecionado(nome);}
       render();
     });
   });
+  // Voz ao abrir modal de confirmação
+  const btnOpenOrder=document.querySelector('[data-act="open-order"]');
+  if(btnOpenOrder){
+    btnOpenOrder.addEventListener('click',()=>{
+      setTimeout(()=>VOZ.confirmarPedido(S.sel.size),300);
+    },{once:true});
+  }
+  // Voz ao confirmar pedido
+  const btnConfirm=document.querySelector('[data-act="confirm-order"]');
+  if(btnConfirm){
+    btnConfirm.addEventListener('click',()=>{
+      setTimeout(()=>VOZ.pedidoConfirmado(S._cn||S.confirmName),600);
+    },{once:true});
+  }
 };
 
 // Trigger after override
