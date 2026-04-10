@@ -1325,33 +1325,60 @@ function rAdminOrders(){
     return p(b)-p(a);
   });
 
+  // Contadores separados por refeição
+  const todayAlmoco  = (todayOrders.length ? todayOrders : todayFallback).filter(o=>o.meal==='Almoço').length;
+  const todayJantar  = (todayOrders.length ? todayOrders : todayFallback).filter(o=>o.meal==='Jantar').length;
+  const monthAlmoco  = monthOrders.filter(o=>o.meal==='Almoço').length;
+  const monthJantar  = monthOrders.filter(o=>o.meal==='Jantar').length;
+
   return`
   <!-- Contadores diário / mensal / total -->
-  <div class="grid-3" style="margin-bottom:20px">
-    <div class="stat-card">
-      <div class="stat-icon" style="background:var(--gold-l)">📅</div>
-      <div>
-        <div class="stat-val">${todayTotal}</div>
-        <div class="stat-lbl">Pedidos hoje</div>
-        <div style="font-size:11px;color:var(--ink3);margin-top:2px">${today}</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+
+    <!-- HOJE -->
+    <div class="card" style="padding:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <div style="width:32px;height:32px;border-radius:9px;background:var(--gold-l);display:flex;align-items:center;justify-content:center;font-size:16px">📅</div>
+        <div>
+          <div style="font-weight:700;font-size:14px">Hoje</div>
+          <div style="font-size:11px;color:var(--ink3)">${today}</div>
+        </div>
+        <div style="margin-left:auto;font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:700;color:var(--primary)">${todayTotal}</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div style="flex:1;background:rgba(200,144,26,.1);border-radius:8px;padding:8px 10px;text-align:center">
+          <div style="font-size:18px;font-weight:700;color:var(--gold-d)">${todayAlmoco}</div>
+          <div style="font-size:10px;color:var(--ink3);margin-top:1px">☀️ Almoços</div>
+        </div>
+        <div style="flex:1;background:rgba(26,18,8,.06);border-radius:8px;padding:8px 10px;text-align:center">
+          <div style="font-size:18px;font-weight:700;color:var(--ink)">${todayJantar}</div>
+          <div style="font-size:10px;color:var(--ink3);margin-top:1px">🌙 Jantares</div>
+        </div>
       </div>
     </div>
-    <div class="stat-card">
-      <div class="stat-icon" style="background:var(--success-l)">📆</div>
-      <div>
-        <div class="stat-val">${monthOrders.length}</div>
-        <div class="stat-lbl">Pedidos este mês</div>
-        <div style="font-size:11px;color:var(--ink3);margin-top:2px">${thisMonth}</div>
+
+    <!-- ESTE MÊS -->
+    <div class="card" style="padding:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <div style="width:32px;height:32px;border-radius:9px;background:var(--success-l);display:flex;align-items:center;justify-content:center;font-size:16px">📆</div>
+        <div>
+          <div style="font-weight:700;font-size:14px">Este mês</div>
+          <div style="font-size:11px;color:var(--ink3)">${thisMonth}</div>
+        </div>
+        <div style="margin-left:auto;font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:700;color:var(--primary)">${monthOrders.length}</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div style="flex:1;background:rgba(200,144,26,.1);border-radius:8px;padding:8px 10px;text-align:center">
+          <div style="font-size:18px;font-weight:700;color:var(--gold-d)">${monthAlmoco}</div>
+          <div style="font-size:10px;color:var(--ink3);margin-top:1px">☀️ Almoços</div>
+        </div>
+        <div style="flex:1;background:rgba(26,18,8,.06);border-radius:8px;padding:8px 10px;text-align:center">
+          <div style="font-size:18px;font-weight:700;color:var(--ink)">${monthJantar}</div>
+          <div style="font-size:10px;color:var(--ink3);margin-top:1px">🌙 Jantares</div>
+        </div>
       </div>
     </div>
-    <div class="stat-card">
-      <div class="stat-icon" style="background:#E8EAF6">📋</div>
-      <div>
-        <div class="stat-val">${allActive.length}</div>
-        <div class="stat-lbl">Total ativos</div>
-        <div style="font-size:11px;color:var(--ink3);margin-top:2px">sem cancelados</div>
-      </div>
-    </div>
+
   </div>
 
   <!-- Filtro por mês + exportar -->
@@ -2725,6 +2752,145 @@ self.addEventListener('fetch',e=>{
     navigator.serviceWorker.register(url).catch(()=>{});
   }catch(e){}
 }
+
+// ═══ SISTEMA DE VOZ ═══
+const VOZ = {
+  synth: window.speechSynthesis || null,
+  ativo: true,
+  falando: false,
+  _voicePT: null,
+
+  // Carrega a voz em português
+  init(){
+    if(!this.synth) return;
+    const set=()=>{
+      const voices=this.synth.getVoices();
+      this._voicePT=
+        voices.find(v=>v.lang==='pt-BR') ||
+        voices.find(v=>v.lang.startsWith('pt')) ||
+        voices[0] || null;
+    };
+    set();
+    if(this.synth.onvoiceschanged!==undefined) this.synth.onvoiceschanged=set;
+  },
+
+  falar(texto, prioridade=false){
+    if(!this.synth||!this.ativo) return;
+    if(prioridade) this.synth.cancel();
+    if(this.falando && !prioridade) return;
+    const utter=new SpeechSynthesisUtterance(texto);
+    utter.lang='pt-BR';
+    utter.rate=0.95;
+    utter.pitch=1.05;
+    utter.volume=1;
+    if(this._voicePT) utter.voice=this._voicePT;
+    utter.onstart=()=>{ this.falando=true; };
+    utter.onend=()=>{ this.falando=false; };
+    utter.onerror=()=>{ this.falando=false; };
+    this.synth.speak(utter);
+  },
+
+  saudacao(){
+    const h=new Date().getHours();
+    const nome=S.user?.name?.split(' ')[0]||'';
+    let saud= h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';
+    const msg=nome?`${saud}, ${nome}! Bem-vindo ao cardápio. Selecione os itens do seu pedido.`
+                  :`${saud}! Bem-vindo ao cardápio. Selecione os itens do seu pedido.`;
+    setTimeout(()=>this.falar(msg, true), 800);
+  },
+
+  itemSelecionado(nome){
+    this.falar(nome, false);
+  },
+
+  itemRemovido(nome){
+    this.falar(`${nome} removido`, false);
+  },
+
+  confirmarPedido(qtd){
+    const txt=qtd===1
+      ?`Você selecionou 1 item. Deseja confirmar o pedido?`
+      :`Você selecionou ${qtd} itens. Deseja confirmar o pedido?`;
+    this.falar(txt, true);
+  },
+
+  pedidoConfirmado(nome){
+    const primNome=nome?.split(' ')[0]||'';
+    const h=new Date().getHours();
+    const refei=h<15?'almoço':'jantar';
+    const msg=primNome
+      ?`Pedido confirmado, ${primNome}! Bom ${refei} e bom apetite!`
+      :`Pedido confirmado! Bom ${refei} e bom apetite!`;
+    setTimeout(()=>this.falar(msg, true), 400);
+  }
+};
+
+VOZ.init();
+
+// Hook: toca saudação ao entrar no app
+const _origRender=window.render||render;
+window.render=function(){
+  const prevScreen=S._lastScreen;
+  _origRender();
+  injectMobileNav();
+  // Saudação ao entrar no app pela primeira vez
+  if(S.screen==='app' && prevScreen!=='app'){
+    VOZ.saudacao();
+  }
+  S._lastScreen=S.screen;
+};
+
+// Hook: lê item ao selecionar/desselecionar
+const _origAct=act;
+function act(a){
+  // Item selecionado no cardápio
+  if(a && !a.includes('${') ){
+    if(S.screen==='app' && S.atab==='home'){
+      // data-item click — item being toggled
+      // handled below via data-item listener override
+    }
+    // Pedido confirmado
+    if(a==='confirm-order'){
+      const cats=S.menu[S.meal]||{};
+      const nomes=[];
+      Object.values(cats).flat().forEach(it=>{if(S.sel.has(it.id))nomes.push(it.name.replace(/^[\p{Emoji}\s]+/u,'').trim()||it.name);});
+      // Executa a ação original
+      _origAct(a);
+      // Voz de bom apetite (após breve delay para o overlay aparecer)
+      setTimeout(()=>VOZ.pedidoConfirmado(S._cn||S.confirmName), 200);
+      return;
+    }
+    // Abre modal de confirmação
+    if(a==='open-order'){
+      _origAct(a);
+      setTimeout(()=>VOZ.confirmarPedido(S.sel.size), 300);
+      return;
+    }
+  }
+  _origAct(a);
+}
+
+// Hook específico para item toggle — lê o nome do item
+const _origBind=bindEvents;
+bindEvents=function(){
+  _origBind();
+  // Re-bind data-item com voz
+  document.querySelectorAll('[data-item]').forEach(el=>{
+    // Remove listeners antigos clonando o elemento
+    const fresh=el.cloneNode(true);
+    el.parentNode&&el.parentNode.replaceChild(fresh,el);
+    fresh.addEventListener('click',()=>{
+      const id=fresh.dataset.item;
+      // Achar nome do item
+      let nome='';
+      Object.values(S.menu[S.meal]||{}).flat().forEach(it=>{if(it.id===id)nome=it.name.replace(/^[\p{Emoji}\s]+/u,'').trim()||it.name;});
+      const jaSelected=S.sel.has(id);
+      if(jaSelected){S.sel.delete(id);if(nome)VOZ.itemRemovido(nome);}
+      else{S.sel.add(id);if(nome)VOZ.itemSelecionado(nome);}
+      render();
+    });
+  });
+};
 
 // Trigger after override
 window.render();
