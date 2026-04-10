@@ -664,7 +664,8 @@ const S={
   editCoId:null,viewOrderId:null,
   newCoIcon:'🏢',newCoName:'',newCoCode:'',newCoLogo:null,
   newItemCat:'Prato principal',newItemIcon:'🍽️',newItemName:'',newItemDesc:'',
-  adminMenuDay: new Date().getDay(), // which day admin is editing
+  adminMenuDay: new Date().getDay(),
+  resumoMeal: 'todos', // which day admin is editing
   menu: buildEmptyMenu(),
   cutoff:{almoco:'10:30',jantar:'17:00'}
 };
@@ -1179,6 +1180,7 @@ function rAdmin(){
   const newOrders=S.orders.filter(o=>o.isNew&&o.status!=='cancelado').length;
   const tabs=[
     {id:'orders',ic:'📋',lb:'Pedidos',badge:newOrders>0?newOrders:null,btype:''},
+    {id:'resumo',ic:'📊',lb:'Resumo'},
     {id:'menu',ic:'🍽️',lb:'Cardápio'},
     {id:'companies',ic:'🏢',lb:'Empresas'},
     {id:'access',ic:'🔑',lb:'Acessos',badge:pendingAccess>0?pendingAccess:null,btype:'gold'},
@@ -1191,6 +1193,7 @@ function rAdmin(){
 
   let content='',topTitle='';
   if(S.atab==='orders')    {content=rAdminOrders();topTitle='Pedidos';}
+  else if(S.atab==='resumo'){content=rAdminResumo();topTitle='Resumo de produção';}
   else if(S.atab==='menu') {content=rAdminMenu();topTitle='Cardápio';}
   else if(S.atab==='companies'){content=rAdminCompanies();topTitle='Empresas';}
   else if(S.atab==='access'){content=rAdminAccess();topTitle='Solicitações de acesso';}
@@ -1271,6 +1274,156 @@ function rAdminOrders(){
       </table>
     </div>
   </div>`).join('')}`;
+}
+
+function rAdminResumo(){
+  // Pega só pedidos ativos (não cancelados)
+  const ativos=S.orders.filter(o=>o.status!=='cancelado');
+
+  if(!ativos.length) return`<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">Nenhum pedido ativo</div><div>Os itens solicitados aparecerão aqui em tempo real</div></div>`;
+
+  // Contar itens por refeição
+  const countByMeal={};
+  ativos.forEach(o=>{
+    const meal=o.meal||'Almoço';
+    if(!countByMeal[meal]) countByMeal[meal]={};
+    // Cada pedido tem items como string "🍖 Frango grelhado, 🍚 Arroz, ..."
+    const items=(o.items||'').split(',').map(i=>i.trim()).filter(Boolean);
+    items.forEach(item=>{
+      // Remove emoji do início para agrupar melhor
+      const clean=item.replace(/^[\p{Emoji}\s]+/u,'').trim()||item;
+      countByMeal[meal][clean]=(countByMeal[meal][clean]||0)+1;
+    });
+  });
+
+  // Contar por empresa também
+  const countByCompany={};
+  ativos.forEach(o=>{
+    const co=o.company||'Sem empresa';
+    if(!countByCompany[co]) countByCompany[co]={total:0,items:{}};
+    countByCompany[co].total++;
+    const items=(o.items||'').split(',').map(i=>i.trim()).filter(Boolean);
+    items.forEach(item=>{
+      const clean=item.replace(/^[\p{Emoji}\s]+/u,'').trim()||item;
+      countByCompany[co].items[clean]=(countByCompany[co].items[clean]||0)+1;
+    });
+  });
+
+  // Totais gerais de todos os itens
+  const totalItems={};
+  ativos.forEach(o=>{
+    (o.items||'').split(',').map(i=>i.trim()).filter(Boolean).forEach(item=>{
+      const clean=item.replace(/^[\p{Emoji}\s]+/u,'').trim()||item;
+      totalItems[clean]=(totalItems[clean]||0)+1;
+    });
+  });
+
+  const sortedTotal=Object.entries(totalItems).sort((a,b)=>b[1]-a[1]);
+  const maxQty=sortedTotal[0]?.[1]||1;
+
+  // Cores para barras
+  const barColor='var(--primary)';
+
+  return`
+  <!-- Filtros -->
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+    <div class="meal-toggle">
+      <button class="mt-btn${S.resumoMeal==='todos'||!S.resumoMeal?' act':''}" data-resumomeal="todos">📊 Todos</button>
+      <button class="mt-btn${S.resumoMeal==='Almoço'?' act':''}" data-resumomeal="Almoço">☀️ Almoço</button>
+      <button class="mt-btn${S.resumoMeal==='Jantar'?' act':''}" data-resumomeal="Jantar">🌙 Jantar</button>
+    </div>
+    <button class="btn btn-outline btn-sm" data-act="export-resumo">📄 Exportar resumo</button>
+  </div>
+
+  <!-- Cards de totais -->
+  <div class="grid-3" style="margin-bottom:20px">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:var(--gold-l)">📋</div>
+      <div><div class="stat-val">${ativos.length}</div><div class="stat-lbl">Pedidos ativos</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:var(--success-l)">🍽️</div>
+      <div><div class="stat-val">${sortedTotal.length}</div><div class="stat-lbl">Itens distintos</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#E8EAF6">🏢</div>
+      <div><div class="stat-val">${Object.keys(countByCompany).length}</div><div class="stat-lbl">Empresas</div></div>
+    </div>
+  </div>
+
+  <!-- Ranking geral de itens -->
+  <div class="card" style="margin-bottom:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:600">🏆 Ranking de itens</div>
+      <span style="font-size:12px;color:var(--ink3)">${ativos.length} pedido${ativos.length!==1?'s':''} considerado${ativos.length!==1?'s':''}</span>
+    </div>
+    ${(()=>{
+      const filtrados=S.resumoMeal&&S.resumoMeal!=='todos'
+        ?ativos.filter(o=>o.meal===S.resumoMeal)
+        :ativos;
+      const ft={};
+      filtrados.forEach(o=>{
+        (o.items||'').split(',').map(i=>i.trim()).filter(Boolean).forEach(item=>{
+          const clean=item.replace(/^[\p{Emoji}\s]+/u,'').trim()||item;
+          // Guardar o item original (com emoji) para exibir
+          if(!ft[clean]) ft[clean]={count:0,original:item};
+          ft[clean].count++;
+        });
+      });
+      const sorted=Object.entries(ft).sort((a,b)=>b[1].count-a[1].count);
+      if(!sorted.length) return`<div style="text-align:center;color:var(--ink3);padding:20px;font-size:14px">Nenhum item para esta refeição</div>`;
+      const mx=sorted[0][1].count;
+      return sorted.map(([name,data],i)=>`
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);${i===sorted.length-1?'border-bottom:none':''}">
+          <div style="width:28px;height:28px;border-radius:50%;background:${i===0?'var(--gold)':i===1?'var(--cream2)':i===2?'#CD7F32':'var(--cream)'};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:${i<3?'#fff':'var(--ink3)'};flex-shrink:0">${i+1}</div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <span style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%">${esc(data.original)}</span>
+              <span style="font-size:13px;font-weight:700;color:var(--primary);flex-shrink:0;margin-left:8px">${data.count}x</span>
+            </div>
+            <div style="height:6px;background:var(--cream2);border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:${Math.round(data.count/mx*100)}%;background:${i===0?'var(--gold)':'var(--primary)'};border-radius:3px;transition:width .4s ease"></div>
+            </div>
+          </div>
+        </div>`).join('');
+    })()}
+  </div>
+
+  <!-- Resumo por refeição -->
+  ${Object.entries(countByMeal).filter(([meal])=>!S.resumoMeal||S.resumoMeal==='todos'||meal===S.resumoMeal).map(([meal,items])=>`
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:600;margin-bottom:14px">${meal==='Almoço'?'☀️':'🌙'} ${meal}</div>
+      <table class="tbl" style="font-size:13px">
+        <thead><tr><th>Item</th><th style="text-align:right">Qtd</th><th style="text-align:right">%</th></tr></thead>
+        <tbody>
+          ${Object.entries(items).sort((a,b)=>b[1]-a[1]).map(([item,qty])=>{
+            const pct=Math.round(qty/ativos.filter(o=>o.meal===meal).length*100);
+            return`<tr>
+              <td style="font-weight:500">${esc(item)}</td>
+              <td style="text-align:right;font-weight:700;color:var(--primary)">${qty}</td>
+              <td style="text-align:right;color:var(--ink3)">${pct}%</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`).join('')}
+
+  <!-- Resumo por empresa -->
+  ${Object.entries(countByCompany).length>1?`
+  <div class="card" style="margin-bottom:16px">
+    <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:600;margin-bottom:14px">🏢 Por empresa</div>
+    ${Object.entries(countByCompany).map(([co,data])=>`
+      <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-weight:700;font-size:14px">${esc(co)}</span>
+          <span class="badge badge-muted">${data.total} pedido${data.total!==1?'s':''}</span>
+        </div>
+        ${Object.entries(data.items).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([item,qty])=>`
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0;color:var(--ink2)">
+            <span>${esc(item)}</span><span style="font-weight:700;color:var(--primary)">${qty}x</span>
+          </div>`).join('')}
+      </div>`).join('')}
+  </div>`:''}`;
 }
 
 function rAdminMenu(){
@@ -1709,6 +1862,7 @@ function bindEvents(){
   document.querySelectorAll('[data-day]').forEach(el=>el.addEventListener('click',()=>{S.day=parseInt(el.dataset.day);render();}));
   document.querySelectorAll('[data-item]').forEach(el=>el.addEventListener('click',()=>{const id=el.dataset.item;if(S.sel.has(id))S.sel.delete(id);else S.sel.add(id);render();}));
   document.querySelectorAll('[data-color]').forEach(el=>el.addEventListener('click',()=>{S.obColor=el.dataset.color;render();}));
+  document.querySelectorAll('[data-resumomeal]').forEach(el=>el.addEventListener('click',()=>{S.resumoMeal=el.dataset.resumomeal;render();}));
   document.querySelectorAll('[data-adminday]').forEach(el=>el.addEventListener('click',()=>{S.adminMenuDay=parseInt(el.dataset.adminday);render();}));
   document.querySelectorAll('[data-rmitem]').forEach(el=>el.addEventListener('click',()=>{
     const id=el.dataset.rmitem;
@@ -2194,6 +2348,33 @@ function act(a){
     if(np!==cp){alert('Senhas não coincidem.');return;}
     S.adminPass=np;localStorage.setItem('mh_adminpass',np);alert('✅ Senha alterada!');
   }
+  else if(a==='export-resumo'){
+    const r=S.rest||{name:'Restaurante'};
+    const ativos=S.orders.filter(o=>o.status!=='cancelado');
+    const totalItems={};
+    ativos.forEach(o=>{
+      (o.items||'').split(',').map(i=>i.trim()).filter(Boolean).forEach(item=>{
+        const clean=item.replace(/^[\p{Emoji}\s]+/u,'').trim()||item;
+        if(!totalItems[clean]) totalItems[clean]={count:0,original:item,meals:{}};
+        totalItems[clean].count++;
+        totalItems[clean].meals[o.meal]=(totalItems[clean].meals[o.meal]||0)+1;
+      });
+    });
+    const sorted=Object.entries(totalItems).sort((a,b)=>b[1].count-a[1].count);
+    const rows=sorted.map(([name,d])=>`<tr><td>${esc(d.original)}</td><td style="text-align:center;font-weight:700">${d.count}</td><td style="text-align:center">${d.meals['Almoço']||0}</td><td style="text-align:center">${d.meals['Jantar']||0}</td></tr>`).join('');
+    const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/><title>Resumo de Produção</title>
+    <style>body{font-family:sans-serif;padding:32px;color:#1A1208;max-width:700px;margin:0 auto}h1{font-size:22px;margin-bottom:4px}p{color:#5C4A30;font-size:14px;margin-bottom:24px}
+    table{width:100%;border-collapse:collapse;font-size:14px}th{background:#1A1208;color:#FBF7EE;padding:10px 14px;text-align:left}
+    td{padding:10px 14px;border-bottom:1px solid #e0d8c8}tr:nth-child(even) td{background:#FBF7EE}
+    .total{font-weight:700;font-size:16px}.btn{margin-top:20px;padding:10px 22px;background:#1A1208;color:#FBF7EE;border:none;border-radius:8px;font-size:14px;cursor:pointer}
+    @media print{.btn{display:none}}</style></head>
+    <body><h1>🍽️ ${esc(r.name)} — Resumo de Produção</h1>
+    <p>Gerado em ${new Date().toLocaleDateString('pt-BR')} às ${nowT()} · ${ativos.length} pedido${ativos.length!==1?'s':''} ativo${ativos.length!==1?'s':''}</p>
+    <table><thead><tr><th>Item</th><th style="text-align:center">Total</th><th style="text-align:center">☀️ Almoço</th><th style="text-align:center">🌙 Jantar</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <button class="btn" onclick="window.print()">🖨️ Imprimir</button></body></html>`;
+    const w=window.open('','_blank');if(w){w.document.write(html);w.document.close();setTimeout(()=>w.print(),600);}
+  }
   else if(a==='open-pdf'){S.overlay='pdf';render();}
   else if(a==='download-pdf'){
     const r=S.rest||{name:'Restaurante'};
@@ -2310,7 +2491,7 @@ function injectMobileNav(){
   const pendingAcc=S.screen==='admin'?S.accessRequests.filter(r=>r.status==='pending').length:0;
   const tabs=S.screen==='app'
     ?[{id:'home',ic:'🏠',lb:'Cardápio'},{id:'orders',ic:'🧾',lb:'Pedidos'},{id:'chat',ic:'💬',lb:'Chat',badge:unreadChat},{id:'profile',ic:'👤',lb:'Perfil'}]
-    :[{id:'orders',ic:'📋',lb:'Pedidos',badge:newOrders},{id:'menu',ic:'🍽️',lb:'Cardápio'},{id:'companies',ic:'🏢',lb:'Empresas'},{id:'access',ic:'🔑',lb:'Acessos',badge:pendingAcc},{id:'chats',ic:'💬',lb:'Chats',badge:unreadChat},{id:'settings',ic:'⚙️',lb:'Config'}];
+    :[{id:'orders',ic:'📋',lb:'Pedidos',badge:newOrders},{id:'resumo',ic:'📊',lb:'Resumo'},{id:'menu',ic:'🍽️',lb:'Cardápio'},{id:'companies',ic:'🏢',lb:'Empresas'},{id:'access',ic:'🔑',lb:'Acessos',badge:pendingAcc},{id:'chats',ic:'💬',lb:'Chats',badge:unreadChat},{id:'settings',ic:'⚙️',lb:'Config'}];
   const nav=document.createElement('div');
   nav.className='mobile-bnav';
   nav.innerHTML=tabs.map(t=>`
