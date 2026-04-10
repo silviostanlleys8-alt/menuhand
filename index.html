@@ -627,6 +627,17 @@ function migrateMenu(old){
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function genId(){return Math.random().toString(36).slice(2,9)+Date.now().toString(36);}
 function nowT(){return new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
+function todayStr(){const d=new Date();return`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;}
+function thisMonthStr(){const d=new Date();return`${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;}
+function formatDateLabel(dateStr){
+  // dateStr = "DD/MM/YYYY" → "Segunda, 09/04"
+  if(!dateStr) return'';
+  const [d,m,y]=dateStr.split('/');
+  if(!d||!m||!y) return dateStr;
+  const dt=new Date(parseInt(y),parseInt(m)-1,parseInt(d));
+  const dayName=DAYSF[dt.getDay()]||'';
+  return`${dayName}, ${d}/${m}`;
+}
 function weekStr(){const d=new Date(),dy=d.getDay(),diff=dy===0?-6:1-dy,mon=new Date(d);mon.setDate(d.getDate()+diff);const sun=new Date(mon);sun.setDate(mon.getDate()+6);const f=x=>`${String(x.getDate()).padStart(2,'0')}/${String(x.getMonth()+1).padStart(2,'0')}`;return`${f(mon)}–${f(sun)}`;}
 function genCode(n){return(n||'').replace(/\s+/g,'').toUpperCase().slice(0,6)||'COD001';}
 function initials(n){return esc((n||'?').split(' ').map(x=>x[0]).join('').slice(0,2).toUpperCase());}
@@ -666,8 +677,9 @@ const S={
   newItemCat:'Prato principal',newItemIcon:'🍽️',newItemName:'',newItemDesc:'',
   adminMenuDay: new Date().getDay(),
   resumoMeal: 'todos',
-  resumoView: 'geral', // 'geral' ou 'diario'
+  resumoView: 'geral',
   resumoDay: new Date().getDay(),
+  ordersMonth: 'todos',
   menu: buildEmptyMenu(),
   cutoff:{almoco:'10:30',jantar:'17:00'}
 };
@@ -1119,19 +1131,43 @@ function rHome(){
 }
 
 function rMyOrders(){
-  // S.orders is already user-scoped when using startUserListeners, but filter as safety net
   const mine=S.orders.filter(o=>!o.userId||o.userId===S.user?.id);
   if(!mine.length)return`<div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">Nenhum pedido ainda</div><div>Vá ao cardápio e faça seu primeiro pedido</div></div>`;
-  return`<div class="card">${mine.map(o=>{const cc=o.status==='cancelado';return`<div class="hist-row" style="${cc?'opacity:.55':''}">
-    <span style="font-size:24px">${o.meal==='Almoço'?'☀️':'🌙'}</span>
-    <div style="flex:1"><div style="font-weight:600;font-size:14px">${esc(o.meal)} · ${esc(o.day)}</div>
-    <div style="font-size:12.5px;color:var(--ink3);margin-top:2px;${cc?'text-decoration:line-through':''}">${esc(o.items)}</div>
-    ${o.obs?`<div style="font-size:11.5px;color:var(--gold-d);margin-top:3px">💬 ${esc(o.obs)}</div>`:''}</div>
-    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
-      <span class="badge ${cc?'badge-danger':'badge-success'}">${cc?'cancelado':o.status}</span>
-      ${!cc?`<button class="btn btn-sm" style="font-size:11px;background:transparent;border:1px solid var(--border);color:var(--ink3)" data-act="cancel-${o.id}">✕</button>`:''}
-    </div>
-  </div>`;}).join('')}</div>`;
+
+  // Agrupar por data
+  const byDate={};
+  mine.forEach(o=>{
+    const key=o.date||o.day||'Este período';
+    if(!byDate[key]) byDate[key]=[];
+    byDate[key].push(o);
+  });
+  const sortedDates=Object.keys(byDate).sort((a,b)=>{
+    const parse=s=>{const p=s.split('/');return p.length===3?new Date(p[2],p[1]-1,p[0]):new Date(0);};
+    return parse(b)-parse(a);
+  });
+  const today=todayStr();
+
+  return`<div>${sortedDates.map(dateKey=>{
+    const list=byDate[dateKey];
+    const isToday=dateKey===today;
+    const label=dateKey.length===10&&dateKey.includes('/')?formatDateLabel(dateKey):dateKey;
+    return`<div style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        ${isToday?`<span class="badge badge-gold" style="font-size:10px">Hoje</span>`:''}
+        <span style="font-size:12px;font-weight:700;color:var(--ink2)">${esc(label)}</span>
+      </div>
+      <div class="card">${list.map(o=>{const cc=o.status==='cancelado';return`<div class="hist-row" style="${cc?'opacity:.55':''}">
+        <span style="font-size:24px">${o.meal==='Almoço'?'☀️':'🌙'}</span>
+        <div style="flex:1"><div style="font-weight:600;font-size:14px">${esc(o.meal)} · ${o.time||''}</div>
+        <div style="font-size:12.5px;color:var(--ink3);margin-top:2px;${cc?'text-decoration:line-through':''}">${esc(o.items)}</div>
+        ${o.obs?`<div style="font-size:11.5px;color:var(--gold-d);margin-top:3px">💬 ${esc(o.obs)}</div>`:''}</div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+          <span class="badge ${cc?'badge-danger':'badge-success'}">${cc?'cancelado':o.status}</span>
+          ${!cc?`<button class="btn btn-sm" style="font-size:11px;background:transparent;border:1px solid var(--border);color:var(--ink3)" data-act="cancel-${o.id}">✕</button>`:''}
+        </div>
+      </div>`;}).join('')}</div>
+    </div>`;
+  }).join('')}</div>`;
 }
 
 function rChatUser(){
@@ -1254,28 +1290,131 @@ function rNotifPanel(){
 }
 
 function rAdminOrders(){
-  if(!S.orders.length)return`<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">Nenhum pedido ainda</div></div>`;
-  const groups={};
-  S.orders.forEach(o=>{const k=o.company||'Sem empresa';if(!groups[k])groups[k]=[];groups[k].push(o);});
-  return`<div style="margin-bottom:16px"><button class="btn btn-outline" data-act="open-pdf">📄 Exportar relatório</button></div>
-  ${Object.entries(groups).map(([co,list])=>`<div style="margin-bottom:24px">
-    <div style="font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--ink3);padding:7px 13px;background:var(--cream);border-radius:var(--r-sm);margin-bottom:8px">
-      🏢 ${esc(co)} · ${list.filter(o=>o.status!=='cancelado').length} ativos
+  if(!S.orders.length) return`<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">Nenhum pedido ainda</div></div>`;
+
+  const today=todayStr();
+  const thisMonth=thisMonthStr();
+
+  // Contadores
+  const todayOrders=S.orders.filter(o=>o.status!=='cancelado'&&(o.date===today||(o.date&&o.date===today)));
+  const monthOrders=S.orders.filter(o=>o.status!=='cancelado'&&(o.month===thisMonth||(o.month&&o.month===thisMonth)));
+  const allActive=S.orders.filter(o=>o.status!=='cancelado');
+  // Fallback: orders sem date — considera pelo campo day = hoje
+  const todayName=DAYSF[new Date().getDay()];
+  const todayFallback=S.orders.filter(o=>o.status!=='cancelado'&&!o.date&&o.day===todayName);
+  const todayTotal=todayOrders.length||todayFallback.length;
+
+  // Agrupar por data (DD/MM/YYYY) → fallback por day name
+  const byDate={};
+  S.orders.forEach(o=>{
+    const key=o.date||('Semana atual – '+( o.day||'?'));
+    if(!byDate[key]) byDate[key]=[];
+    byDate[key].push(o);
+  });
+
+  // Ordenar datas: mais recente primeiro
+  const sortedDates=Object.keys(byDate).sort((a,b)=>{
+    const parse=s=>{const p=s.split('/');return p.length===3?new Date(p[2],p[1]-1,p[0]):new Date(0);};
+    return parse(b)-parse(a);
+  });
+
+  // Filtro de mês/período
+  const filterMonth=S.ordersMonth||'todos';
+  const months=[...new Set(S.orders.map(o=>o.month).filter(Boolean))].sort((a,b)=>{
+    const p=s=>{const[m,y]=s.split('/');return new Date(y,m-1);};
+    return p(b)-p(a);
+  });
+
+  return`
+  <!-- Contadores diário / mensal / total -->
+  <div class="grid-3" style="margin-bottom:20px">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:var(--gold-l)">📅</div>
+      <div>
+        <div class="stat-val">${todayTotal}</div>
+        <div class="stat-lbl">Pedidos hoje</div>
+        <div style="font-size:11px;color:var(--ink3);margin-top:2px">${today}</div>
+      </div>
     </div>
-    <div class="card" style="padding:0;overflow:hidden">
-      <table class="tbl">
-        <thead><tr><th>Colaborador</th><th>Refeição</th><th>Dia</th><th>Itens</th><th>Hora</th><th>Status</th></tr></thead>
-        <tbody>${list.map(a=>{const cc=a.status==='cancelado';return`<tr style="${cc?'opacity:.5':''}" data-act="view-order-${a.id}">
-          <td><div style="font-weight:600">${esc(a.name)}</div></td>
-          <td>${a.meal==='Almoço'?'☀️':'🌙'} <span style="font-size:12px">${esc(a.meal)}</span></td>
-          <td style="font-size:12px;color:var(--ink2)">${esc(a.day||'')}</td>
-          <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:var(--ink3)">${esc(a.items)}</td>
-          <td style="font-size:11.5px;color:var(--ink3)">${a.time||'—'}</td>
-          <td><span class="badge ${cc?'badge-danger':a.isNew?'badge-warn':'badge-muted'}">${cc?'cancelado':a.isNew?'novo':'visto'}</span></td>
-        </tr>`;}).join('')}</tbody>
-      </table>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:var(--success-l)">📆</div>
+      <div>
+        <div class="stat-val">${monthOrders.length}</div>
+        <div class="stat-lbl">Pedidos este mês</div>
+        <div style="font-size:11px;color:var(--ink3);margin-top:2px">${thisMonth}</div>
+      </div>
     </div>
-  </div>`).join('')}`;
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#E8EAF6">📋</div>
+      <div>
+        <div class="stat-val">${allActive.length}</div>
+        <div class="stat-lbl">Total ativos</div>
+        <div style="font-size:11px;color:var(--ink3);margin-top:2px">sem cancelados</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filtro por mês + exportar -->
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:8px">
+      <label style="font-size:12px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.4px">Período:</label>
+      <select class="fi" id="orders-month-filter" style="width:auto;padding:7px 32px 7px 10px;font-size:13px">
+        <option value="todos">Todos</option>
+        <option value="${today}"${filterMonth===today?' selected':''}>Hoje</option>
+        ${months.map(m=>`<option value="${m}"${filterMonth===m?' selected':''}>${m}</option>`).join('')}
+      </select>
+    </div>
+    <button class="btn btn-outline btn-sm" data-act="open-pdf">📄 Exportar relatório</button>
+  </div>
+
+  <!-- Pedidos agrupados por data -->
+  ${sortedDates.map(dateKey=>{
+    let list=byDate[dateKey];
+
+    // Aplicar filtro
+    if(filterMonth==='todos'){/* sem filtro */}
+    else if(filterMonth===today){
+      list=list.filter(o=>o.date===today||(!o.date&&o.day===todayName));
+    } else {
+      list=list.filter(o=>o.month===filterMonth);
+    }
+    if(!list.length) return'';
+
+    const active=list.filter(o=>o.status!=='cancelado').length;
+    const cancelled=list.filter(o=>o.status==='cancelado').length;
+    const label=dateKey.includes('/')&&dateKey.length===10
+      ?formatDateLabel(dateKey)
+      :dateKey;
+    const isToday=dateKey===today;
+
+    return`<div style="margin-bottom:22px">
+      <!-- Cabeçalho do dia -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div style="height:1px;flex:1;background:var(--border)"></div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          ${isToday?`<span class="badge badge-gold">🔴 Hoje</span>`:''}
+          <span style="font-weight:700;font-size:14px;color:var(--ink)">${esc(label)}</span>
+          <span class="badge badge-success">${active} ativo${active!==1?'s':''}</span>
+          ${cancelled>0?`<span class="badge badge-danger">${cancelled} cancelado${cancelled!==1?'s':''}</span>`:''}
+        </div>
+        <div style="height:1px;flex:1;background:var(--border)"></div>
+      </div>
+      <!-- Tabela do dia -->
+      <div class="card" style="padding:0;overflow:hidden">
+        <table class="tbl">
+          <thead><tr><th>Colaborador</th><th>Empresa</th><th>Refeição</th><th>Itens</th><th>Hora</th><th>Status</th></tr></thead>
+          <tbody>${list.map(a=>{const cc=a.status==='cancelado';return`<tr style="${cc?'opacity:.5':''}" data-act="view-order-${a.id}">
+            <td><div style="font-weight:600">${esc(a.name)}</div></td>
+            <td style="font-size:12px;color:var(--ink2)">${esc(a.company||'')}</td>
+            <td>${a.meal==='Almoço'?'☀️':'🌙'} <span style="font-size:12px">${esc(a.meal)}</span></td>
+            <td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:var(--ink3)">${esc(a.items)}</td>
+            <td style="font-size:11.5px;color:var(--ink3)">${a.time||'—'}</td>
+            <td><span class="badge ${cc?'badge-danger':a.isNew?'badge-warn':'badge-muted'}">${cc?'cancelado':a.isNew?'novo':'visto'}</span></td>
+          </tr>`;}).join('')}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('')}`;
 }
 
 function rAdminResumo(){
@@ -1911,6 +2050,8 @@ function bindEvents(){
   document.querySelectorAll('[data-resumomeal]').forEach(el=>el.addEventListener('click',()=>{S.resumoMeal=el.dataset.resumomeal;render();}));
   document.querySelectorAll('[data-resumoview]').forEach(el=>el.addEventListener('click',()=>{S.resumoView=el.dataset.resumoview;render();}));
   document.querySelectorAll('[data-resumoday]').forEach(el=>el.addEventListener('click',()=>{S.resumoDay=parseInt(el.dataset.resumoday);render();}));
+  const omf=document.getElementById('orders-month-filter');
+  if(omf) omf.addEventListener('change',e=>{S.ordersMonth=e.target.value;render();});
   document.querySelectorAll('[data-adminday]').forEach(el=>el.addEventListener('click',()=>{S.adminMenuDay=parseInt(el.dataset.adminday);render();}));
   document.querySelectorAll('[data-rmitem]').forEach(el=>el.addEventListener('click',()=>{
     const id=el.dataset.rmitem;
@@ -2270,7 +2411,10 @@ function act(a){
     const dayMenu=S.menu[S.meal]?.[todayIdx]||{};
     const items=[];Object.values(dayMenu).flat().forEach(it=>{if(S.sel.has(it.id))items.push(it.name);});
     const oid=genId();
-    const order={id:oid,userId:S.user?.id||'',name:S.confirmName,company:S.user?.company||'—',companyId:S.user?.companyId||'',meal:S.meal==='almoco'?'Almoço':'Jantar',day:DAYSF[S.day],items:items.join(', '),obs:S.confirmObs.trim(),status:'confirmado',time:nowT(),isNew:true};
+    const now=new Date();
+    const dateStr=`${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
+    const monthStr=`${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
+    const order={id:oid,userId:S.user?.id||'',name:S.confirmName,company:S.user?.company||'—',companyId:S.user?.companyId||'',meal:S.meal==='almoco'?'Almoço':'Jantar',day:DAYSF[S.day],items:items.join(', '),obs:S.confirmObs.trim(),status:'confirmado',time:nowT(),date:dateStr,month:monthStr,isNew:true};
     S.orders.unshift(order);
     if(db&&rid()){db.doc(`mh/${rid()}/orders/${oid}`).set({...order,ts:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn(e));}
     S.sel.clear();S.confirmObs='';S.overlay='success';render();
