@@ -1439,8 +1439,8 @@ function rAdminOrders(){
       <div class="card" style="padding:0;overflow:hidden">
         <table class="tbl">
           <thead><tr><th>Colaborador</th><th>Empresa</th><th>Refeição</th><th>Itens</th><th>Hora</th><th>Status</th></tr></thead>
-          <tbody>${list.map(a=>{const cc=a.status==='cancelado';return`<tr style="${cc?'opacity:.5':''}" data-act="view-order-${a.id}">
-            <td><div style="font-weight:600">${esc(a.name)}</div></td>
+          <tbody>${list.map(a=>{const cc=a.status==='cancelado';return`<tr style="${cc?'opacity:.5':''}${a.avulso?';background:#FFFBF0':''}" data-act="view-order-${a.id}">
+            <td><div style="font-weight:600">${esc(a.name)}${a.avulso?` <span style="background:var(--gold-l);color:var(--gold-d);font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;vertical-align:middle">AVULSO</span>`:''}</div></td>
             <td style="font-size:12px;color:var(--ink2)">${esc(a.company||'')}</td>
             <td>${a.meal==='Almoço'?'☀️':'🌙'} <span style="font-size:12px">${esc(a.meal)}</span></td>
             <td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:var(--ink3)">${esc(a.items)}</td>
@@ -2036,8 +2036,12 @@ function rOrderDetailModal(){
   return`<div class="modal-overlay" data-close="overlay"><div class="modal">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
       <div class="modal-title" style="flex:1;margin-bottom:0">📋 Pedido — ${esc(a.name)}</div>
+      ${a.avulso?`<span class="badge badge-gold">AVULSO</span>`:''}
       <span class="badge ${a.status==='cancelado'?'badge-danger':a.isNew?'badge-warn':'badge-muted'}">${a.status==='cancelado'?'cancelado':a.isNew?'novo':'visualizado'}</span>
     </div>
+    ${a.avulso?`<div style="background:var(--gold-l);border:1px solid rgba(200,144,26,.25);border-radius:var(--r-sm);padding:9px 13px;font-size:12.5px;color:var(--gold-d);margin-bottom:14px">
+      🚗 Pedido avulso — motorista, terceirizado ou visitante
+    </div>`:''}
     <div style="display:flex;align-items:center;gap:13px;background:var(--cream);border-radius:var(--r);padding:13px;margin-bottom:16px">
       <div class="av" style="width:46px;height:46px;font-size:18px">${initials(a.name)}</div>
       <div><div style="font-weight:700;font-size:16px">${esc(a.name)}</div><div style="font-size:12.5px;color:var(--ink3)">🏢 ${esc(a.company)}</div></div>
@@ -2045,7 +2049,7 @@ function rOrderDetailModal(){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
       <div class="info-cell"><div class="info-cell-lbl">Refeição</div><div class="info-cell-val">${a.meal==='Almoço'?'☀️':'🌙'} ${esc(a.meal)}</div></div>
       <div class="info-cell"><div class="info-cell-lbl">Horário</div><div class="info-cell-val">🕐 ${a.time||'—'}</div></div>
-      <div class="info-cell"><div class="info-cell-lbl">Dia</div><div class="info-cell-val">📅 ${esc(a.day||'—')}</div></div>
+      <div class="info-cell"><div class="info-cell-lbl">Data</div><div class="info-cell-val">📅 ${esc(a.date||a.day||'—')}</div></div>
       <div class="info-cell"><div class="info-cell-lbl">Empresa</div><div class="info-cell-val">🏢 ${esc(a.company)}</div></div>
     </div>
     <div style="background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:13px;margin-bottom:${a.obs?'13px':'0'}">
@@ -2056,7 +2060,10 @@ function rOrderDetailModal(){
       <div class="cat-label" style="color:var(--gold-d)">💬 Observação</div>
       <div style="font-size:14px">${esc(a.obs)}</div>
     </div>`:''}
-    <div class="modal-footer"><button class="btn btn-outline btn-w" data-close="overlay">Fechar</button></div>
+    <div style="margin-top:16px;display:flex;gap:8px">
+      ${a.status!=='cancelado'?`<button class="btn btn-danger btn-sm" data-act="cancel-${a.id}">✕ Cancelar pedido</button>`:''}
+      <button class="btn btn-outline" style="margin-left:auto" data-close="overlay">Fechar</button>
+    </div>
   </div></div>`;
 }
 
