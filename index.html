@@ -684,7 +684,10 @@ const S={
   resumoView: 'geral',
   resumoDay: new Date().getDay(),
   resumoDate: '',
-  ordersMonth: 'todos',
+  ordersMonth: todayStr(),
+  calendarYear: new Date().getFullYear(),
+  calendarMonth: new Date().getMonth(),
+  calendarSelectedDate: null,
   // Pedido avulso (admin)
   avulsoName:'',avulsoCompanyId:'',avulsoMeal:'almoco',avulsoDay:new Date().getDay(),avulsoObs:'',avulsoSel:new Set(),
   // PDF date range
@@ -1227,6 +1230,7 @@ function rAdmin(){
   const newOrders=S.orders.filter(o=>o.isNew&&o.status!=='cancelado').length;
   const tabs=[
     {id:'orders',ic:'📋',lb:'Pedidos',badge:newOrders>0?newOrders:null,btype:''},
+    {id:'calendario',ic:'📅',lb:'Calendário'},
     {id:'resumo',ic:'📊',lb:'Resumo'},
     {id:'menu',ic:'🍽️',lb:'Cardápio'},
     {id:'companies',ic:'🏢',lb:'Empresas'},
@@ -1240,6 +1244,7 @@ function rAdmin(){
 
   let content='',topTitle='';
   if(S.atab==='orders')    {content=rAdminOrders();topTitle='Pedidos';}
+  else if(S.atab==='calendario'){content=rAdminCalendario();topTitle='Calendário de Refeições';}
   else if(S.atab==='resumo'){content=rAdminResumo();topTitle='Resumo de produção';}
   else if(S.atab==='menu') {content=rAdminMenu();topTitle='Cardápio';}
   else if(S.atab==='companies'){content=rAdminCompanies();topTitle='Empresas';}
@@ -1296,6 +1301,186 @@ function rNotifPanel(){
       <div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--ink)">${esc(n.title)}</div><div style="font-size:12px;color:var(--ink3);margin-top:1px">${esc(n.msg)}</div></div>
     </div>`).join('')}
   </div>`;
+}
+
+function rAdminCalendario(){
+  const year=S.calendarYear;
+  const month=S.calendarMonth; // 0-11
+  const now=new Date();
+  const todayD=now.getDate(),todayM=now.getMonth(),todayY=now.getFullYear();
+
+  // Nome do mês
+  const MONTHS=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const monthName=MONTHS[month];
+
+  // Primeiro dia da semana do mês (0=Dom)
+  const firstDay=new Date(year,month,1).getDay();
+  // Dias no mês
+  const daysInMonth=new Date(year,month+1,0).getDate();
+
+  // Indexar pedidos por DD/MM/YYYY
+  const byDate={};
+  S.orders.forEach(o=>{
+    if(o.status==='cancelado') return;
+    const key=o.date||null;
+    if(!key) return;
+    // Checar se pertence ao mês/ano
+    const parts=key.split('/');
+    if(parts.length!==3) return;
+    const [d,m,y]=parts;
+    if(parseInt(m)-1===month && parseInt(y)===year){
+      if(!byDate[parseInt(d)]) byDate[parseInt(d)]={total:0,almoco:0,jantar:0,pessoas:new Set()};
+      byDate[parseInt(d)].total++;
+      if(o.meal==='Almoço') byDate[parseInt(d)].almoco++;
+      else if(o.meal==='Jantar') byDate[parseInt(d)].jantar++;
+      if(o.name) byDate[parseInt(d)].pessoas.add(o.name);
+    }
+  });
+
+  // Células do calendário
+  let cells='';
+  // Padding inicial
+  for(let i=0;i<firstDay;i++) cells+=`<div style="min-height:80px"></div>`;
+  for(let d=1;d<=daysInMonth;d++){
+    const info=byDate[d];
+    const isToday=d===todayD&&month===todayM&&year===todayY;
+    const dateStr=`${String(d).padStart(2,'0')}/${String(month+1).padStart(2,'0')}/${year}`;
+    const hasPedidos=info&&info.total>0;
+    const dayOfWeek=new Date(year,month,d).getDay();
+    const isWeekend=dayOfWeek===0||dayOfWeek===6;
+
+    cells+=`<div data-calday="${dateStr}" style="
+      min-height:80px;border-radius:10px;padding:10px;
+      background:${isToday?'var(--primary)':hasPedidos?'rgba(200,144,26,.08)':'var(--white)'};
+      border:${isToday?'none':hasPedidos?'1.5px solid rgba(200,144,26,.35)':'1px solid var(--border)'};
+      cursor:${hasPedidos||isToday?'pointer':'default'};
+      transition:all .14s;position:relative;
+      opacity:${isWeekend&&!hasPedidos?'.45':'1'};
+    " ${hasPedidos||isToday?'class="cal-day-clickable"':''}>
+      <div style="font-weight:700;font-size:13px;color:${isToday?'#fff':'var(--ink)'};">${d}</div>
+      <div style="font-size:9.5px;color:${isToday?'rgba(255,255,255,.6)':'var(--ink3)'};margin-bottom:6px">${DAYS[dayOfWeek]}</div>
+      ${hasPedidos?`
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="background:${isToday?'rgba(255,255,255,.2)':'rgba(200,144,26,.15)'};border-radius:5px;padding:2px 6px;font-size:10px;font-weight:700;color:${isToday?'#fff':'var(--gold-d)'};display:flex;align-items:center;gap:3px">
+            <span>👥</span><span>${info.pessoas.size} pessoa${info.pessoas.size!==1?'s':''}</span>
+          </div>
+          ${info.almoco>0?`<div style="font-size:9.5px;color:${isToday?'rgba(255,255,255,.75)':'var(--ink2)'};padding:1px 4px">☀️ ${info.almoco} almoço${info.almoco!==1?'s':''}</div>`:''}
+          ${info.jantar>0?`<div style="font-size:9.5px;color:${isToday?'rgba(255,255,255,.75)':'var(--ink2)'};padding:1px 4px">🌙 ${info.jantar} jantar${info.jantar!==1?'s':''}</div>`:''}
+        </div>
+      `:`<div style="font-size:10px;color:${isToday?'rgba(255,255,255,.4)':'var(--border2)'}">—</div>`}
+    </div>`;
+  }
+
+  // Total do mês
+  const totalMes=Object.values(byDate).reduce((a,v)=>a+v.total,0);
+  const almocoMes=Object.values(byDate).reduce((a,v)=>a+v.almoco,0);
+  const jantarMes=Object.values(byDate).reduce((a,v)=>a+v.jantar,0);
+  const diasComPedidos=Object.keys(byDate).length;
+
+  // Modal de detalhe de dia (se selecionado)
+  let dayDetail='';
+  if(S.calendarSelectedDate){
+    const ds=S.calendarSelectedDate;
+    const [dd,mm,yy]=ds.split('/');
+    const label=formatDateLabel(ds);
+    const dayOrders=S.orders.filter(o=>o.date===ds&&o.status!=='cancelado');
+    const dayAlmoco=dayOrders.filter(o=>o.meal==='Almoço');
+    const dayJantar=dayOrders.filter(o=>o.meal==='Jantar');
+    dayDetail=`
+    <div class="modal-overlay" style="z-index:400" data-close="overlay" onclick="if(event.target===this){S.calendarSelectedDate=null;render();}">
+      <div class="modal wide" onclick="event.stopPropagation()">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div class="modal-title">📅 ${esc(label)}</div>
+          <button class="btn btn-outline btn-sm" onclick="S.calendarSelectedDate=null;render()">✕ Fechar</button>
+        </div>
+        <div class="modal-sub">${dayOrders.length} pedido${dayOrders.length!==1?'s':''} neste dia</div>
+
+        <!-- Resumo do dia -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:18px">
+          <div style="background:var(--cream2);border-radius:10px;padding:12px;text-align:center">
+            <div style="font-size:22px;font-weight:700;color:var(--primary)">${dayOrders.length}</div>
+            <div style="font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:.5px">Total</div>
+          </div>
+          <div style="background:rgba(200,144,26,.1);border-radius:10px;padding:12px;text-align:center">
+            <div style="font-size:22px;font-weight:700;color:var(--gold-d)">${dayAlmoco.length}</div>
+            <div style="font-size:10px;color:var(--ink3)">☀️ Almoços</div>
+          </div>
+          <div style="background:rgba(26,18,8,.06);border-radius:10px;padding:12px;text-align:center">
+            <div style="font-size:22px;font-weight:700;color:var(--ink)">${dayJantar.length}</div>
+            <div style="font-size:10px;color:var(--ink3)">🌙 Jantares</div>
+          </div>
+        </div>
+
+        ${dayOrders.length===0?`<div class="empty-state" style="padding:30px"><div class="empty-icon">📭</div><div class="empty-title">Nenhum pedido neste dia</div></div>`:`
+        <!-- Lista de pedidos -->
+        ${['Almoço','Jantar'].map(meal=>{
+          const list=dayOrders.filter(o=>o.meal===meal);
+          if(!list.length) return'';
+          return`<div style="margin-bottom:14px">
+            <div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink3);margin-bottom:8px">${meal==='Almoço'?'☀️':'🌙'} ${meal} — ${list.length} pedido${list.length!==1?'s':''}</div>
+            <div class="card" style="padding:0;overflow:hidden">
+              <table class="tbl">
+                <thead><tr><th>Colaborador</th><th>Empresa</th><th>Itens</th><th>Hora</th></tr></thead>
+                <tbody>${list.map(o=>`<tr>
+                  <td style="font-weight:600">${esc(o.name)}${o.avulso?` <span style="background:var(--gold-l);color:var(--gold-d);font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px">AVULSO</span>`:''}</td>
+                  <td style="font-size:12px;color:var(--ink2)">${esc(o.company||'')}</td>
+                  <td style="font-size:11.5px;color:var(--ink3);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.items||'')}</td>
+                  <td style="font-size:11.5px;color:var(--ink3)">${o.time||'—'}</td>
+                </tr>`).join('')}</tbody>
+              </table>
+            </div>
+          </div>`;
+        }).join('')}
+        `}
+        <div style="margin-top:16px;text-align:right">
+          <button class="btn btn-primary btn-sm" onclick="S.atab='orders';S.ordersMonth='${ds}';S.calendarSelectedDate=null;render()">Ver na aba Pedidos →</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  return`
+  ${dayDetail}
+  <!-- Header mês -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+    <div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:700;color:var(--ink)">${monthName} ${year}</div>
+      <div style="font-size:12px;color:var(--ink3);margin-top:2px">${diasComPedidos} dia${diasComPedidos!==1?'s':''} com pedidos · ${totalMes} refeição${totalMes!==1?'ões':''} no mês</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="btn btn-outline btn-sm" data-act="cal-prev">← Mês anterior</button>
+      <button class="btn btn-outline btn-sm" data-act="cal-today">Hoje</button>
+      <button class="btn btn-outline btn-sm" data-act="cal-next">Próximo →</button>
+    </div>
+  </div>
+
+  <!-- Resumo do mês -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">
+    <div class="card" style="padding:14px;text-align:center">
+      <div style="font-size:28px;font-weight:700;font-family:'Cormorant Garamond',serif;color:var(--primary)">${totalMes}</div>
+      <div style="font-size:11px;color:var(--ink3);text-transform:uppercase;letter-spacing:.4px;margin-top:2px">Refeições no mês</div>
+    </div>
+    <div class="card" style="padding:14px;text-align:center">
+      <div style="font-size:28px;font-weight:700;font-family:'Cormorant Garamond',serif;color:var(--gold-d)">${almocoMes}</div>
+      <div style="font-size:11px;color:var(--ink3);margin-top:2px">☀️ Almoços</div>
+    </div>
+    <div class="card" style="padding:14px;text-align:center">
+      <div style="font-size:28px;font-weight:700;font-family:'Cormorant Garamond',serif;color:var(--ink)">${jantarMes}</div>
+      <div style="font-size:11px;color:var(--ink3);margin-top:2px">🌙 Jantares</div>
+    </div>
+  </div>
+
+  <!-- Cabeçalho dias da semana -->
+  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px">
+    ${['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(d=>`<div style="text-align:center;font-size:11px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:.4px;padding:4px 0">${d}</div>`).join('')}
+  </div>
+
+  <!-- Grade do calendário -->
+  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">
+    ${cells}
+  </div>
+  <div style="margin-top:14px;font-size:12px;color:var(--ink3);text-align:center">💡 Clique em um dia com pedidos para ver os detalhes</div>
+  `;
 }
 
 function rAdminOrders(){
@@ -1396,7 +1581,8 @@ function rAdminOrders(){
       <label style="font-size:12px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.4px">Período:</label>
       <select class="fi" id="orders-month-filter" style="width:auto;padding:7px 32px 7px 10px;font-size:13px">
         <option value="todos">Todos</option>
-        <option value="${today}"${filterMonth===today?' selected':''}>Hoje</option>
+        <option value="${today}"${filterMonth===today?' selected':''}>Hoje (${today})</option>
+        ${(filterMonth!=='todos'&&filterMonth!==today&&/^\d{2}\/\d{2}\/\d{4}$/.test(filterMonth))?`<option value="${filterMonth}" selected>${formatDateLabel(filterMonth)}</option>`:''}
         ${months.map(m=>`<option value="${m}"${filterMonth===m?' selected':''}>${m}</option>`).join('')}
       </select>
     </div>
@@ -1410,8 +1596,13 @@ function rAdminOrders(){
 
     // Aplicar filtro
     if(filterMonth==='todos'){/* sem filtro */}
-    else if(filterMonth===today){
-      list=list.filter(o=>o.date===today||(!o.date&&o.day===todayName));
+    else if(/^\d{2}\/\d{2}\/\d{4}$/.test(filterMonth)){
+      // Filtro por data específica DD/MM/YYYY (inclui "hoje")
+      list=list.filter(o=>{
+        if(o.date===filterMonth) return true;
+        if(!o.date&&filterMonth===today&&o.day===todayName) return true;
+        return false;
+      });
     } else {
       list=list.filter(o=>o.month===filterMonth);
     }
@@ -2231,7 +2422,7 @@ function bindEvents(){
   document.querySelectorAll('[data-act]').forEach(el=>{
     el.addEventListener('click',e=>{e.stopPropagation();act(el.dataset.act);});
   });
-  document.querySelectorAll('[data-atab]').forEach(el=>el.addEventListener('click',()=>{S.atab=el.dataset.atab;if(S.atab!=='chats')S.threadUid=null;closeSidebar();render();}));
+  document.querySelectorAll('[data-atab]').forEach(el=>el.addEventListener('click',()=>{const prev=S.atab;S.atab=el.dataset.atab;if(S.atab!=='chats')S.threadUid=null;if(S.atab==='orders'&&prev!=='orders')S.ordersMonth=todayStr();closeSidebar();render();}));
   document.querySelectorAll('[data-ptab]').forEach(el=>el.addEventListener('click',()=>{S.portalTab=el.dataset.ptab;S.adminPassErr=false;render();}));
   document.querySelectorAll('[data-meal]').forEach(el=>el.addEventListener('click',()=>{S.meal=el.dataset.meal;render();}));
   document.querySelectorAll('[data-day]').forEach(el=>el.addEventListener('click',()=>{S.day=parseInt(el.dataset.day);render();}));
@@ -2263,6 +2454,11 @@ function bindEvents(){
   const omf=document.getElementById('orders-month-filter');
   if(omf) omf.addEventListener('change',e=>{S.ordersMonth=e.target.value;render();});
   document.querySelectorAll('[data-adminday]').forEach(el=>el.addEventListener('click',()=>{S.adminMenuDay=parseInt(el.dataset.adminday);render();}));
+  // Calendário — clique em dia
+  document.querySelectorAll('[data-calday]').forEach(el=>el.addEventListener('click',()=>{
+    const d=el.dataset.calday;
+    if(d){S.calendarSelectedDate=d;render();}
+  }));
   document.querySelectorAll('[data-rmitem]').forEach(el=>el.addEventListener('click',()=>{
     const id=el.dataset.rmitem;
     const d=S.adminMenuDay;
@@ -2562,6 +2758,19 @@ function act(a){
     }else{S.adminPassErr=true;render();const i=document.getElementById('admin-pass');if(i){i.value='';setTimeout(()=>i.focus(),50);}}
   }
   else if(a==='logout-admin'){S.isAdmin=false;localStorage.setItem('mh_isAdmin','');S.screen='landing';render();}
+  // Calendário — navegação meses
+  else if(a==='cal-prev'){
+    S.calendarMonth--;if(S.calendarMonth<0){S.calendarMonth=11;S.calendarYear--;}
+    S.calendarSelectedDate=null;render();
+  }
+  else if(a==='cal-next'){
+    S.calendarMonth++;if(S.calendarMonth>11){S.calendarMonth=0;S.calendarYear++;}
+    S.calendarSelectedDate=null;render();
+  }
+  else if(a==='cal-today'){
+    S.calendarYear=new Date().getFullYear();S.calendarMonth=new Date().getMonth();
+    S.calendarSelectedDate=null;render();
+  }
   // Onboard
   else if(a==='ob-back'){if(S.obStep>1){S.obStep--;render();}else{S.screen=S.isAdmin?'admin':'landing';render();}}
   else if(a==='ob-next'){
