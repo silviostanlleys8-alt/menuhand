@@ -708,6 +708,8 @@ const S={
   fechCNPJ: '',
   fechEndereco: '',
   fechBanco: '',
+  fechOrders: null,    // pedidos carregados especificamente para o fechamento
+  fechLoading: false,  // indicador de carregamento
   // Pedido avulso (admin)
   avulsoName:'',avulsoCompanyId:'',avulsoMeal:'almoco',avulsoDay:new Date().getDay(),avulsoObs:'',avulsoSel:new Set(),
   // PDF date range
@@ -1331,24 +1333,34 @@ function rNotifPanel(){
 // FECHAMENTO DE MÊS
 // ══════════════════════════════════════════════════
 function rAdminFechamento(){
-  const meses=[...new Set(S.orders.map(o=>o.month).filter(Boolean))].sort((a,b)=>{
-    const p=s=>{const[m,y]=s.split('/');return new Date(y,m-1);};return p(b)-p(a);
-  });
-  // Adiciona mês atual se não existir
   const tm=thisMonthStr();
-  if(!meses.includes(tm)) meses.unshift(tm);
-
   const selMes=S.fechMes||tm;
   const selCoId=S.fechCoId||'todas';
 
-  // Filtrar pedidos do mês selecionado
-  // Filtra por mês: usa o.month quando disponível, senão deriva de o.date (DD/MM/YYYY)
-  const pedidosMes=S.orders.filter(o=>{
-    if(o.status==='cancelado') return false;
-    if(o.month===selMes) return true;
-    if(o.date){const p=o.date.split('/');if(p.length===3&&`${p[1]}/${p[2]}`===selMes)return true;}
-    return false;
+  // Meses disponíveis: derivados de S.orders (como sugestão no dropdown)
+  const mesesSet=new Set();
+  S.orders.forEach(o=>{
+    if(o.month) mesesSet.add(o.month);
+    else if(o.date){const p=o.date.split('/');if(p.length===3)mesesSet.add(`${p[1]}/${p[2]}`);}
   });
+  const meses=[...mesesSet].sort((a,b)=>{const p=s=>{const[m,y]=s.split('/');return new Date(y,m-1);};return p(b)-p(a);});
+  if(!meses.includes(tm)) meses.unshift(tm);
+
+  // Disparar carga dos pedidos do mês se ainda não foi feita
+  if(S.fechOrders===null&&!S.fechLoading){
+    setTimeout(()=>loadFechamentoOrders(selMes),0);
+    return`<div style="text-align:center;padding:60px 20px"><div style="font-size:40px;margin-bottom:12px">📂</div><div style="font-weight:600;color:var(--ink2)">Carregando pedidos de ${selMes}…</div></div>`;
+  }
+  if(S.fechLoading){
+    return`<div style="text-align:center;padding:60px 20px">
+      <div style="font-size:40px;margin-bottom:12px">⏳</div>
+      <div style="font-weight:600;color:var(--ink2)">Buscando todos os pedidos de ${selMes}…</div>
+      <div style="font-size:12px;color:var(--ink3);margin-top:6px">Aguarde, consultando o banco de dados completo</div>
+    </div>`;
+  }
+
+  // Usa os pedidos carregados especificamente para o fechamento
+  const pedidosMes=S.fechOrders||[];
   const pedidosFiltrados=selCoId==='todas'?pedidosMes:pedidosMes.filter(o=>o.companyId===selCoId||o.company===S.companies.find(c=>c.id===selCoId)?.name);
 
   // Contadores
@@ -2628,7 +2640,13 @@ function bindEvents(){
   document.querySelectorAll('[data-act]').forEach(el=>{
     el.addEventListener('click',e=>{e.stopPropagation();act(el.dataset.act);});
   });
-  document.querySelectorAll('[data-atab]').forEach(el=>el.addEventListener('click',()=>{const prev=S.atab;S.atab=el.dataset.atab;if(S.atab!=='chats')S.threadUid=null;if(S.atab==='orders'&&prev!=='orders')S.ordersMonth=todayStr();closeSidebar();render();}));
+  document.querySelectorAll('[data-atab]').forEach(el=>el.addEventListener('click',()=>{
+    const prev=S.atab;S.atab=el.dataset.atab;
+    if(S.atab!=='chats')S.threadUid=null;
+    if(S.atab==='orders'&&prev!=='orders')S.ordersMonth=todayStr();
+    if(S.atab==='fechamento'&&prev!=='fechamento'){S.fechOrders=null;S.fechLoading=false;}
+    closeSidebar();render();
+  }));
   document.querySelectorAll('[data-ptab]').forEach(el=>el.addEventListener('click',()=>{S.portalTab=el.dataset.ptab;S.adminPassErr=false;render();}));
   document.querySelectorAll('[data-meal]').forEach(el=>el.addEventListener('click',()=>{S.meal=el.dataset.meal;render();}));
   document.querySelectorAll('[data-day]').forEach(el=>el.addEventListener('click',()=>{S.day=parseInt(el.dataset.day);render();}));
@@ -2670,7 +2688,8 @@ function bindEvents(){
   fechBinds.forEach(([id,key])=>{
     const el=document.getElementById(id);
     if(el) el.addEventListener('input',e=>{S[key]=e.target.value;if(['fechPrecoAlmoco','fechPrecoJantar'].includes(key))render();});
-    if(el&&(id==='fech-mes'||id==='fech-co')) el.addEventListener('change',e=>{S[key]=e.target.value;render();});
+    if(el&&id==='fech-co') el.addEventListener('change',e=>{S[key]=e.target.value;render();});
+    if(el&&id==='fech-mes') el.addEventListener('change',e=>{S[key]=e.target.value;S.fechOrders=null;S.fechLoading=false;loadFechamentoOrders(e.target.value);});
   });
   // Calendário — clique em dia
   document.querySelectorAll('[data-calday]').forEach(el=>el.addEventListener('click',()=>{
@@ -2831,6 +2850,60 @@ function searchRestaurants(q){
 }
 
 // ══════════════════════════════════════════════════
+// FECHAMENTO — CARREGAMENTO COMPLETO DO MÊS
+// ══════════════════════════════════════════════════
+function loadFechamentoOrders(selMes){
+  if(!db||!rid()){
+    // Sem Firebase: usa S.orders com filtro robusto
+    S.fechOrders=S.orders.filter(o=>matchOrderMes(o,selMes));
+    S.fechLoading=false;render();return;
+  }
+  S.fechLoading=true;S.fechOrders=null;render();
+  // Monta range de timestamps para o mês inteiro
+  const parts=selMes.split('/');
+  const mm=parseInt(parts[0])-1; // 0-indexed
+  const yy=parseInt(parts[1]);
+  const startDate=new Date(yy,mm,1,0,0,0);
+  const endDate=new Date(yy,mm+1,0,23,59,59);
+  const startTs=firebase.firestore.Timestamp.fromDate(startDate);
+  const endTs=firebase.firestore.Timestamp.fromDate(endDate);
+  db.collection(`mh/${rid()}/orders`)
+    .where('ts','>=',startTs)
+    .where('ts','<=',endTs)
+    .get()
+    .then(snap=>{
+      const fromFirebase=snap.docs.map(d=>({...d.data(),id:d.id}));
+      // Também inclui pedidos locais (S.orders) que batem com o mês mas podem não ter ts válido
+      const local=S.orders.filter(o=>matchOrderMes(o,selMes)&&!fromFirebase.find(f=>f.id===o.id));
+      S.fechOrders=[...fromFirebase,...local];
+      S.fechLoading=false;render();
+    })
+    .catch(err=>{
+      console.warn('Fechamento Firebase erro:',err);
+      // Fallback: usa S.orders com filtro robusto
+      S.fechOrders=S.orders.filter(o=>matchOrderMes(o,selMes));
+      S.fechLoading=false;render();
+    });
+}
+
+// Verifica se um pedido pertence ao mês (MM/YYYY), com todas as formas possíveis de data
+function matchOrderMes(o,selMes){
+  if(o.status==='cancelado') return false;
+  // 1. Campo month direto
+  if(o.month===selMes) return true;
+  // 2. month sem zero padding ("4/2026" vs "04/2026")
+  if(o.month){const p=o.month.split('/');if(p.length===2&&`${p[0].padStart(2,'0')}/${p[1]}`===selMes)return true;}
+  // 3. Fallback pelo campo date (DD/MM/YYYY)
+  if(o.date){const p=o.date.split('/');if(p.length===3&&`${p[1]}/${p[2]}`===selMes)return true;}
+  // 4. Fallback pelo ts (Firestore Timestamp ou milissegundos)
+  if(o.ts){try{
+    const d=o.ts.toDate?o.ts.toDate():(o.ts.seconds?new Date(o.ts.seconds*1000):new Date(o.ts));
+    if(!isNaN(d.getTime())){const m=`${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;if(m===selMes)return true;}
+  }catch(e){}}
+  return false;
+}
+
+// ══════════════════════════════════════════════════
 // GERADOR DE RECIBO — FECHAMENTO DE MÊS
 // ══════════════════════════════════════════════════
 function gerarReciboFechamento(){
@@ -2838,13 +2911,8 @@ function gerarReciboFechamento(){
   const selCoId=S.fechCoId||'todas';
   const coNome=selCoId==='todas'?'Todas as Empresas':(S.companies.find(c=>c.id===selCoId)?.name||'—');
 
-  // Filtra por mês: usa o.month quando disponível, senão deriva de o.date (DD/MM/YYYY)
-  const pedidosMes=S.orders.filter(o=>{
-    if(o.status==='cancelado') return false;
-    if(o.month===selMes) return true;
-    if(o.date){const p=o.date.split('/');if(p.length===3&&`${p[1]}/${p[2]}`===selMes)return true;}
-    return false;
-  });
+  // Usa os pedidos já carregados pelo loadFechamentoOrders (completo, sem limite)
+  const pedidosMes=S.fechOrders||S.orders.filter(o=>matchOrderMes(o,selMes));
   const pedidos=selCoId==='todas'?pedidosMes:pedidosMes.filter(o=>o.companyId===selCoId||o.company===coNome);
 
   const totalAlmoco=pedidos.filter(o=>o.meal==='Almoço').length;
