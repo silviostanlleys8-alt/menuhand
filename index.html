@@ -2853,54 +2853,43 @@ function searchRestaurants(q){
 // FECHAMENTO — CARREGAMENTO COMPLETO DO MÊS
 // ══════════════════════════════════════════════════
 function loadFechamentoOrders(selMes){
+  S.fechLoading=true;S.fechOrders=null;render();
   if(!db||!rid()){
-    // Sem Firebase: usa S.orders com filtro robusto
-    S.fechOrders=S.orders.filter(o=>matchOrderMes(o,selMes));
+    S.fechOrders=filtrarPedidosMes(S.orders,selMes);
     S.fechLoading=false;render();return;
   }
-  S.fechLoading=true;S.fechOrders=null;render();
-  // Monta range de timestamps para o mês inteiro
-  const parts=selMes.split('/');
-  const mm=parseInt(parts[0])-1; // 0-indexed
-  const yy=parseInt(parts[1]);
-  const startDate=new Date(yy,mm,1,0,0,0);
-  const endDate=new Date(yy,mm+1,0,23,59,59);
-  const startTs=firebase.firestore.Timestamp.fromDate(startDate);
-  const endTs=firebase.firestore.Timestamp.fromDate(endDate);
-  db.collection(`mh/${rid()}/orders`)
-    .where('ts','>=',startTs)
-    .where('ts','<=',endTs)
-    .get()
+  // Busca TODOS os pedidos do Firebase sem limite — filtra no cliente
+  db.collection(`mh/${rid()}/orders`).get()
     .then(snap=>{
-      const fromFirebase=snap.docs.map(d=>({...d.data(),id:d.id}));
-      // Também inclui pedidos locais (S.orders) que batem com o mês mas podem não ter ts válido
-      const local=S.orders.filter(o=>matchOrderMes(o,selMes)&&!fromFirebase.find(f=>f.id===o.id));
-      S.fechOrders=[...fromFirebase,...local];
+      const todos=snap.docs.map(d=>({...d.data(),id:d.id}));
+      S.fechOrders=filtrarPedidosMes(todos,selMes);
       S.fechLoading=false;render();
     })
     .catch(err=>{
       console.warn('Fechamento Firebase erro:',err);
-      // Fallback: usa S.orders com filtro robusto
-      S.fechOrders=S.orders.filter(o=>matchOrderMes(o,selMes));
+      S.fechOrders=filtrarPedidosMes(S.orders,selMes);
       S.fechLoading=false;render();
     });
 }
 
-// Verifica se um pedido pertence ao mês (MM/YYYY), com todas as formas possíveis de data
-function matchOrderMes(o,selMes){
-  if(o.status==='cancelado') return false;
-  // 1. Campo month direto
-  if(o.month===selMes) return true;
-  // 2. month sem zero padding ("4/2026" vs "04/2026")
-  if(o.month){const p=o.month.split('/');if(p.length===2&&`${p[0].padStart(2,'0')}/${p[1]}`===selMes)return true;}
-  // 3. Fallback pelo campo date (DD/MM/YYYY)
-  if(o.date){const p=o.date.split('/');if(p.length===3&&`${p[1]}/${p[2]}`===selMes)return true;}
-  // 4. Fallback pelo ts (Firestore Timestamp ou milissegundos)
-  if(o.ts){try{
-    const d=o.ts.toDate?o.ts.toDate():(o.ts.seconds?new Date(o.ts.seconds*1000):new Date(o.ts));
-    if(!isNaN(d.getTime())){const m=`${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;if(m===selMes)return true;}
-  }catch(e){}}
-  return false;
+// Retorna apenas pedidos NÃO cancelados que pertencem ao mês (MM/YYYY)
+function filtrarPedidosMes(lista,selMes){
+  return lista.filter(o=>{
+    // Exclui cancelados
+    if(o.status==='cancelado') return false;
+    // 1. Campo month direto ("04/2026")
+    if(o.month===selMes) return true;
+    // 2. month sem zero padding ("4/2026")
+    if(o.month){const p=o.month.split('/');if(p.length===2&&`${p[0].padStart(2,'0')}/${p[1]}`===selMes)return true;}
+    // 3. Campo date no formato DD/MM/YYYY
+    if(o.date){const p=o.date.split('/');if(p.length===3&&`${p[1]}/${p[2]}`===selMes)return true;}
+    // 4. Timestamp Firestore ou segundos
+    if(o.ts){try{
+      const d=o.ts.toDate?o.ts.toDate():(o.ts.seconds?new Date(o.ts.seconds*1000):new Date(o.ts));
+      if(!isNaN(d.getTime())){const m=`${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;if(m===selMes)return true;}
+    }catch(e){}}
+    return false;
+  });
 }
 
 // ══════════════════════════════════════════════════
@@ -2912,7 +2901,7 @@ function gerarReciboFechamento(){
   const coNome=selCoId==='todas'?'Todas as Empresas':(S.companies.find(c=>c.id===selCoId)?.name||'—');
 
   // Usa os pedidos já carregados pelo loadFechamentoOrders (completo, sem limite)
-  const pedidosMes=S.fechOrders||S.orders.filter(o=>matchOrderMes(o,selMes));
+  const pedidosMes=S.fechOrders||filtrarPedidosMes(S.orders,selMes);
   const pedidos=selCoId==='todas'?pedidosMes:pedidosMes.filter(o=>o.companyId===selCoId||o.company===coNome);
 
   const totalAlmoco=pedidos.filter(o=>o.meal==='Almoço').length;
