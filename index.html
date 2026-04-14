@@ -1342,7 +1342,13 @@ function rAdminFechamento(){
   const selCoId=S.fechCoId||'todas';
 
   // Filtrar pedidos do mês selecionado
-  const pedidosMes=S.orders.filter(o=>o.status!=='cancelado'&&(o.month===selMes));
+  // Filtra por mês: usa o.month quando disponível, senão deriva de o.date (DD/MM/YYYY)
+  const pedidosMes=S.orders.filter(o=>{
+    if(o.status==='cancelado') return false;
+    if(o.month===selMes) return true;
+    if(o.date){const p=o.date.split('/');if(p.length===3&&`${p[1]}/${p[2]}`===selMes)return true;}
+    return false;
+  });
   const pedidosFiltrados=selCoId==='todas'?pedidosMes:pedidosMes.filter(o=>o.companyId===selCoId||o.company===S.companies.find(c=>c.id===selCoId)?.name);
 
   // Contadores
@@ -2832,7 +2838,13 @@ function gerarReciboFechamento(){
   const selCoId=S.fechCoId||'todas';
   const coNome=selCoId==='todas'?'Todas as Empresas':(S.companies.find(c=>c.id===selCoId)?.name||'—');
 
-  const pedidosMes=S.orders.filter(o=>o.status!=='cancelado'&&o.month===selMes);
+  // Filtra por mês: usa o.month quando disponível, senão deriva de o.date (DD/MM/YYYY)
+  const pedidosMes=S.orders.filter(o=>{
+    if(o.status==='cancelado') return false;
+    if(o.month===selMes) return true;
+    if(o.date){const p=o.date.split('/');if(p.length===3&&`${p[1]}/${p[2]}`===selMes)return true;}
+    return false;
+  });
   const pedidos=selCoId==='todas'?pedidosMes:pedidosMes.filter(o=>o.companyId===selCoId||o.company===coNome);
 
   const totalAlmoco=pedidos.filter(o=>o.meal==='Almoço').length;
