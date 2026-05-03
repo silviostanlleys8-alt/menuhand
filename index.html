@@ -2210,23 +2210,28 @@ function confirmarRetro(){
   const debugJ=document.getElementById('retro-j-0');
   alert('DEBUG retro-a-0: '+(debugA?'ENCONTRADO valor='+debugA.value:'NULL')
     +' | retro-j-0: '+(debugJ?'ENCONTRADO valor='+debugJ.value:'NULL'));
-  S.companies.forEach((co,idx)=>{
-    const aEl=document.getElementById(`retro-a-${idx}`);
-    const jEl=document.getElementById(`retro-j-${idx}`);
-    const almoco=parseInt(aEl?.value)||0;
-    const jantar=parseInt(jEl?.value)||0;
-    alert(`${co.name}: almoco=${almoco} jantar=${jantar} (aEl=${aEl?'ok':'NULL'} jEl=${jEl?'ok':'NULL'})`);
-    if(almoco>0){
-      const oid=genId();
-      newOrders.push({id:oid,userId:'admin-retro',name:`${almoco} refeição${almoco>1?'s':''} — ${co.name}`,company:co.name,companyId:co.id,meal:'Almoço',day:dayName,items:`${almoco} almoço${almoco>1?'s':''}`,obs:`Lançamento retroativo · ${almoco} pessoa${almoco>1?'s':''}`,status:'confirmado',time:'00:00',date:dateStr,month:monthStr,isNew:false,avulso:true,retro:true,qty:almoco});
-      count+=almoco;
-    }
-    if(jantar>0){
-      const oid=genId();
-      newOrders.push({id:oid,userId:'admin-retro',name:`${jantar} refeição${jantar>1?'s':''} — ${co.name}`,company:co.name,companyId:co.id,meal:'Jantar',day:dayName,items:`${jantar} jantar${jantar>1?'s':''}`,obs:`Lançamento retroativo · ${jantar} pessoa${jantar>1?'s':''}`,status:'confirmado',time:'00:00',date:dateStr,month:monthStr,isNew:false,avulso:true,retro:true,qty:jantar});
-      count+=jantar;
-    }
-  });
+  try{
+    S.companies.forEach((co,idx)=>{
+      const aEl=document.getElementById(`retro-a-${idx}`);
+      const jEl=document.getElementById(`retro-j-${idx}`);
+      const almoco=parseInt(aEl?.value)||0;
+      const jantar=parseInt(jEl?.value)||0;
+      alert(`${co.name}: almoco=${almoco} jantar=${jantar} (aEl=${aEl?'ok':'NULL'} jEl=${jEl?'ok':'NULL'})`);
+      if(almoco>0){
+        const oid=genId();
+        newOrders.push({id:oid,userId:'admin-retro',name:`${almoco} refeição${almoco>1?'s':''} — ${co.name}`,company:co.name,companyId:co.id,meal:'Almoço',day:dayName,items:`${almoco} almoço${almoco>1?'s':''}`,obs:`Lançamento retroativo · ${almoco} pessoa${almoco>1?'s':''}`,status:'confirmado',time:'00:00',date:dateStr,month:monthStr,isNew:false,avulso:true,retro:true,qty:almoco});
+        count+=almoco;
+      }
+      if(jantar>0){
+        const oid=genId();
+        newOrders.push({id:oid,userId:'admin-retro',name:`${jantar} refeição${jantar>1?'s':''} — ${co.name}`,company:co.name,companyId:co.id,meal:'Jantar',day:dayName,items:`${jantar} jantar${jantar>1?'s':''}`,obs:`Lançamento retroativo · ${jantar} pessoa${jantar>1?'s':''}`,status:'confirmado',time:'00:00',date:dateStr,month:monthStr,isNew:false,avulso:true,retro:true,qty:jantar});
+        count+=jantar;
+      }
+    });
+  }catch(err){
+    alert('ERRO no forEach: '+err.message+' | stack: '+(err.stack||'').slice(0,200));
+    return;
+  }
   alert('count='+count+' | newOrders='+newOrders.length);
   if(count===0){alert('ERRO: count=0, nada para lançar');return;}
   newOrders.forEach(order=>{
