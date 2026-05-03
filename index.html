@@ -3036,28 +3036,33 @@ function act(a){
     S.overlay='retro';render();
   }
   else if(a==='confirm-retro'){
+    // Ler data
     const dateEl=document.getElementById('retro-date');
-    const dateInputVal=dateEl?.value||S.retroDate||dateToInput(todayStr());
-    const dateStr=inputValToDateStr(dateInputVal)||todayStr();
-    if(!dateStr){alert('Selecione uma data.');return;}
+    const dateInputVal=dateEl?.value||S.retroDate||'';
+    if(!dateInputVal){alert('Selecione uma data.');return;}
+    const dateStr=inputValToDateStr(dateInputVal);
+    if(!dateStr){alert('Data inválida.');return;}
     const parsedDate=parseDateStr(dateStr);
     const monthStr=`${String(parsedDate.getMonth()+1).padStart(2,'0')}/${parsedDate.getFullYear()}`;
     const dayName=DAYSF[parsedDate.getDay()];
+
+    // Ler todos os inputs direto do DOM
     let count=0;
     const newOrders=[];
-    // Ler valores atuais dos inputs na tela
-    document.querySelectorAll('.retro-input').forEach(el=>{
+    const inputs=document.querySelectorAll('.retro-input');
+    const vals={}; // {idx: {almoco:n, jantar:n}}
+    inputs.forEach(el=>{
       const idx=parseInt(el.dataset.retroidx);
       const meal=el.dataset.retromeal;
-      const val=parseInt(el.value)||0;
-      if(!S.retroRows[idx]) S.retroRows[idx]={almoco:0,jantar:0};
-      S.retroRows[idx][meal]=val;
+      const v=parseInt(el.value)||0;
+      if(!vals[idx]) vals[idx]={almoco:0,jantar:0};
+      vals[idx][meal]=v;
     });
+
     S.companies.forEach((co,idx)=>{
-      const row=S.retroRows[idx]||{almoco:0,jantar:0};
-      const almoco=parseInt(row.almoco)||0;
-      const jantar=parseInt(row.jantar)||0;
-      // Criar 1 pedido consolidado por refeição por empresa
+      const row=vals[idx]||{almoco:0,jantar:0};
+      const almoco=row.almoco||0;
+      const jantar=row.jantar||0;
       if(almoco>0){
         const oid=genId();
         newOrders.push({
@@ -3089,12 +3094,15 @@ function act(a){
         count+=jantar;
       }
     });
+
     if(count===0){alert('Informe pelo menos uma refeição.');return;}
-    // Salvar todos
+
     newOrders.forEach(order=>{
       S.orders.unshift(order);
       if(db&&rid()){
-        db.doc(`mh/${rid()}/orders/${order.id}`).set({...order,ts:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn(e));
+        db.doc(`mh/${rid()}/orders/${order.id}`)
+          .set({...order,ts:firebase.firestore.FieldValue.serverTimestamp()})
+          .catch(e=>console.warn('Firebase erro:',e));
       }
     });
     S.retroRows=[];S.overlay=null;render();
