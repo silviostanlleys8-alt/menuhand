@@ -2191,21 +2191,26 @@ function rAvulsoModal(){
 function confirmarRetro(){
   alert('INICIANDO confirmarRetro — função foi chamada!');
   const dateEl=document.getElementById('retro-date');
-  if(!dateEl){alert('Modal não encontrado.');return;}
+  if(!dateEl){alert('ERRO: retro-date não encontrado');return;}
   const dateInputVal=dateEl.value;
-  if(!dateInputVal){alert('Selecione uma data.');return;}
+  alert('DATA: '+dateInputVal);
+  if(!dateInputVal){alert('ERRO: data vazia');return;}
   const dateStr=inputValToDateStr(dateInputVal);
-  if(!dateStr){alert('Data inválida.');return;}
+  alert('dateStr: '+dateStr);
+  if(!dateStr){alert('ERRO: dateStr vazio');return;}
   const parsedDate=parseDateStr(dateStr);
   const monthStr=`${String(parsedDate.getMonth()+1).padStart(2,'0')}/${parsedDate.getFullYear()}`;
   const dayName=DAYSF[parsedDate.getDay()];
+  alert('monthStr: '+monthStr+' | dayName: '+dayName);
   let count=0;
   const newOrders=[];
+  alert('Empresas: '+S.companies.length);
   S.companies.forEach((co,idx)=>{
     const aEl=document.getElementById(`retro-a-${idx}`);
     const jEl=document.getElementById(`retro-j-${idx}`);
     const almoco=parseInt(aEl?.value)||0;
     const jantar=parseInt(jEl?.value)||0;
+    alert(`${co.name}: almoco=${almoco} jantar=${jantar} (aEl=${aEl?'ok':'NULL'} jEl=${jEl?'ok':'NULL'})`);
     if(almoco>0){
       const oid=genId();
       newOrders.push({id:oid,userId:'admin-retro',name:`${almoco} refeição${almoco>1?'s':''} — ${co.name}`,company:co.name,companyId:co.id,meal:'Almoço',day:dayName,items:`${almoco} almoço${almoco>1?'s':''}`,obs:`Lançamento retroativo · ${almoco} pessoa${almoco>1?'s':''}`,status:'confirmado',time:'00:00',date:dateStr,month:monthStr,isNew:false,avulso:true,retro:true,qty:almoco});
@@ -2217,11 +2222,13 @@ function confirmarRetro(){
       count+=jantar;
     }
   });
-  if(count===0){alert('Preencha pelo menos uma quantidade.');return;}
+  alert('count='+count+' | newOrders='+newOrders.length);
+  if(count===0){alert('ERRO: count=0, nada para lançar');return;}
   newOrders.forEach(order=>{
     S.orders.unshift(order);
-    if(db&&rid()) db.doc(`mh/${rid()}/orders/${order.id}`).set({...order,ts:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn(e));
+    if(db&&rid()) db.doc(`mh/${rid()}/orders/${order.id}`).set({...order,ts:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>alert('Firebase erro: '+e));
   });
+  alert('SUCESSO! Fechando modal...');
   fecharRetroDialog();
   S.overlay=null;
   render();
