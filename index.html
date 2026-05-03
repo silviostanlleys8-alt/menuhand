@@ -2375,14 +2375,33 @@ function rPDFModal(){
 
 // ═══ BIND EVENTS ═══
 function bindEvents(){
+  // Overlay close — usa capture:false para não interferir com botões internos
   document.querySelectorAll('[data-close="overlay"]').forEach(el=>{
     el.addEventListener('click',e=>{
-      // Fecha só se: (1) clicou no backdrop, ou (2) o próprio elemento clicado tem data-close
-      const isBackdrop=e.target===el;
-      const isCloseBtn=e.target.dataset&&e.target.dataset.close==='overlay';
-      if(isBackdrop||isCloseBtn){S.overlay=null;render();}
+      // Só fecha se clicou EXATAMENTE no backdrop ou num botão que TEM data-close
+      if(e.target===el||(e.target.tagName==='BUTTON'&&e.target.dataset.close==='overlay')){
+        S.overlay=null;render();
+      }
     });
   });
+  // Botões do modal retroativo — registrados ANTES do data-act para ter prioridade
+  const btnLancar=document.getElementById('btn-lancar-retro');
+  if(btnLancar){
+    btnLancar.addEventListener('click',e=>{
+      e.stopImmediatePropagation();
+      e.stopPropagation();
+      e.preventDefault();
+      confirmarRetro();
+    });
+  }
+  const btnCancelarRetro=document.getElementById('btn-cancelar-retro');
+  if(btnCancelarRetro){
+    btnCancelarRetro.addEventListener('click',e=>{
+      e.stopImmediatePropagation();
+      e.stopPropagation();
+      S.overlay=null;render();
+    });
+  }
   document.querySelectorAll('[data-act]').forEach(el=>{
     el.addEventListener('click',e=>{e.stopPropagation();act(el.dataset.act);});
   });
@@ -2399,11 +2418,6 @@ function bindEvents(){
     if(S.avulsoSel.has(id))S.avulsoSel.delete(id);else S.avulsoSel.add(id);
     render();
   }));
-  // Botões do modal retroativo — listeners diretos
-  const btnLancar=document.getElementById('btn-lancar-retro');
-  if(btnLancar) btnLancar.addEventListener('click',e=>{e.stopPropagation();confirmarRetro();});
-  const btnCancelarRetro=document.getElementById('btn-cancelar-retro');
-  if(btnCancelarRetro) btnCancelarRetro.addEventListener('click',e=>{e.stopPropagation();S.overlay=null;render();});
   // Botão confirmar retroativo — listener direto como failsafe
   const btnRetro=document.getElementById('btn-confirm-retro');
   if(btnRetro){
