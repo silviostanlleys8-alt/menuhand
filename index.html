@@ -2336,9 +2336,9 @@ function rPDFModal(){
 function bindEvents(){
   document.querySelectorAll('[data-close="overlay"]').forEach(el=>{
     el.addEventListener('click',e=>{
-      // Só fecha se clicou no backdrop (o próprio overlay) ou num botão com data-close
+      // Fecha só se: (1) clicou no backdrop, ou (2) o próprio elemento clicado tem data-close
       const isBackdrop=e.target===el;
-      const isCloseBtn=e.target.closest('[data-close="overlay"]')&&e.target.tagName==='BUTTON';
+      const isCloseBtn=e.target.dataset&&e.target.dataset.close==='overlay';
       if(isBackdrop||isCloseBtn){S.overlay=null;render();}
     });
   });
