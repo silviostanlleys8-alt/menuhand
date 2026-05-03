@@ -689,6 +689,21 @@ const S={
   avulsoName:'',avulsoCompanyId:'',avulsoMeal:'almoco',avulsoDay:new Date().getDay(),avulsoObs:'',avulsoSel:new Set(),avulsoDate:'',avulsoItemsManual:'',
   // Lançamento retroativo em lote
   retroDate:'',retroRows:[],
+  // Recibo
+  recibo:{
+    // Contratada (prestador)
+    contratadaNome:'', contratadaCNPJ:'', contratadaEndereco:'', contratadaTelefone:'',
+    // Contratante (cliente)
+    contratanteNome:'', contratanteCNPJ:'', contratanteEndereco:'',
+    // Dados bancários
+    banco:'', agencia:'', conta:'', pix:'', tipoConta:'Corrente',
+    // Período e pagamento
+    periodoInicio:'', periodoFim:'', dataPagamento:'', numRecibo:'001',
+    // Valores
+    valorAlmoco:'', valorJantar:'', obs:'',
+    // Empresa selecionada para filtrar pedidos
+    empresaId:''
+  },
   // PDF date range
   pdfDateFrom:'',pdfDateTo:'',
   menu: buildEmptyMenu(),
@@ -1234,6 +1249,7 @@ function rAdmin(){
     {id:'companies',ic:'🏢',lb:'Empresas'},
     {id:'access',ic:'🔑',lb:'Acessos',badge:pendingAccess>0?pendingAccess:null,btype:'gold'},
     {id:'chats',ic:'💬',lb:'Chats',badge:totalUnread>0?totalUnread:null,btype:''},
+    {id:'recibo',ic:'🧾',lb:'Recibo'},
     {id:'settings',ic:'⚙️',lb:'Config'},
   ].map(t=>`<div class="nav-item${S.atab===t.id?' act':''}" data-atab="${t.id}">
     <span class="ni">${t.ic}</span><span>${t.lb}</span>
@@ -1247,6 +1263,7 @@ function rAdmin(){
   else if(S.atab==='companies'){content=rAdminCompanies();topTitle='Empresas';}
   else if(S.atab==='access'){content=rAdminAccess();topTitle='Solicitações de acesso';}
   else if(S.atab==='chats'){content=rAdminChats();topTitle='Chats';}
+  else if(S.atab==='recibo'){content=rAdminRecibo();topTitle='Emissão de recibo';}
   else if(S.atab==='settings'){content=rAdminSettings();topTitle='Configurações';}
 
   return`<div class="app-shell">
@@ -1836,6 +1853,334 @@ function rAdminChats(){
   </div>`;
 }
 
+function rAdminRecibo(){
+  const rb=S.recibo;
+  const r=S.rest||{name:''};
+
+  // Calcular totais do período selecionado e empresa selecionada
+  let totalAlmoco=0,totalJantar=0,totalGeral=0;
+  let tabelaDias='';
+  if(rb.periodoInicio&&rb.periodoFim){
+    const from=new Date(rb.periodoInicio);
+    const to=new Date(rb.periodoFim);
+    to.setHours(23,59,59);
+    const filtered=S.orders.filter(o=>{
+      if(o.status==='cancelado') return false;
+      if(rb.empresaId&&o.companyId!==rb.empresaId) return false;
+      if(!o.date) return false;
+      const p=o.date.split('/');
+      const d=new Date(p[2],p[1]-1,p[0]);
+      return d>=from&&d<=to;
+    });
+
+    // Agrupar por data
+    const byDate={};
+    filtered.forEach(o=>{
+      if(!byDate[o.date]) byDate[o.date]={a:0,j:0};
+      if(o.meal==='Almoço') byDate[o.date].a+=orderQty(o);
+      else byDate[o.date].j+=orderQty(o);
+    });
+
+    const sortedDates=Object.keys(byDate).sort((a,b)=>{
+      const p=s=>{ const q=s.split('/'); return new Date(q[2],q[1]-1,q[0]); };
+      return p(a)-p(b);
+    });
+
+    sortedDates.forEach(d=>{
+      const v=byDate[d];
+      const label=formatDateLabel(d);
+      const ta=v.a; const tj=v.j;
+      totalAlmoco+=ta; totalJantar+=tj;
+      tabelaDias+=`<tr><td>${esc(label)}</td><td style="text-align:center">${ta||'—'}</td><td style="text-align:center">${tj||'—'}</td><td style="text-align:center;font-weight:700">${ta+tj}</td></tr>`;
+    });
+    totalGeral=totalAlmoco+totalJantar;
+  }
+
+  // Calcular valor total
+  const vAlm=parseFloat(rb.valorAlmoco)||0;
+  const vJan=parseFloat(rb.valorJantar)||0;
+  const totalValor=(totalAlmoco*vAlm)+(totalJantar*vJan);
+  const fmtBRL=v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+
+  const fi=(id,label,val,ph='',type='text',extra='')=>
+    `<div class="fg"><label class="fl">${label}</label><input class="fi" type="${type}" id="rb-${id}" value="${esc(val||'')}" placeholder="${ph}" ${extra}/></div>`;
+
+  return`<div style="max-width:780px">
+
+    <!-- Número do recibo + botão gerar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:700">🧾 Recibo Nº</div>
+        <input class="fi" id="rb-numRecibo" value="${esc(rb.numRecibo||'001')}" style="width:90px;font-size:18px;font-weight:700;text-align:center"/>
+      </div>
+      <button class="btn btn-primary" style="padding:12px 24px;font-size:15px" data-act="gerar-recibo">🖨️ Gerar PDF</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+      <!-- CONTRATADA -->
+      <div class="card">
+        <div class="cat-label">🏭 Contratada (Prestador de serviço)</div>
+        ${fi('contratadaNome','Razão social / Nome',rb.contratadaNome,'Ex: Restaurante Sabor de Mainha')}
+        ${fi('contratadaCNPJ','CNPJ / CPF',rb.contratadaCNPJ,'00.000.000/0001-00')}
+        ${fi('contratadaEndereco','Endereço',rb.contratadaEndereco,'Rua, Nº, Bairro, Cidade - UF')}
+        ${fi('contratadaTelefone','Telefone',rb.contratadaTelefone,'(00) 00000-0000')}
+      </div>
+
+      <!-- CONTRATANTE -->
+      <div class="card">
+        <div class="cat-label">🏢 Contratante (Cliente)</div>
+        <div class="fg"><label class="fl">Empresa</label>
+          <select class="fi" id="rb-empresaId">
+            <option value="">— Selecione ou digite abaixo —</option>
+            ${S.companies.map(c=>`<option value="${c.id}"${rb.empresaId===c.id?' selected':''}>${esc(c.name)}</option>`).join('')}
+          </select>
+        </div>
+        ${fi('contratanteNome','Razão social / Nome',rb.contratanteNome,'Ex: ESTAÇOFER Ltda')}
+        ${fi('contratanteCNPJ','CNPJ / CPF',rb.contratanteCNPJ,'00.000.000/0001-00')}
+        ${fi('contratanteEndereco','Endereço',rb.contratanteEndereco,'Rua, Nº, Bairro, Cidade - UF')}
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+      <!-- DADOS BANCÁRIOS -->
+      <div class="card">
+        <div class="cat-label">🏦 Dados bancários (Contratada)</div>
+        ${fi('banco','Banco',rb.banco,'Ex: Nubank, Bradesco, Caixa')}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          ${fi('agencia','Agência',rb.agencia,'0000')}
+          ${fi('conta','Conta',rb.conta,'00000-0')}
+        </div>
+        <div class="fg"><label class="fl">Tipo de conta</label>
+          <select class="fi" id="rb-tipoConta">
+            <option${rb.tipoConta==='Corrente'?' selected':''}>Corrente</option>
+            <option${rb.tipoConta==='Poupança'?' selected':''}>Poupança</option>
+          </select>
+        </div>
+        ${fi('pix','Chave PIX',rb.pix,'CPF, CNPJ, e-mail ou telefone')}
+      </div>
+
+      <!-- PERÍODO E VALORES -->
+      <div class="card">
+        <div class="cat-label">📅 Período e valores</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          ${fi('periodoInicio','Início do período',rb.periodoInicio,'','date')}
+          ${fi('periodoFim','Fim do período',rb.periodoFim,'','date')}
+        </div>
+        ${fi('dataPagamento','Data de pagamento',rb.dataPagamento,'','date')}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          ${fi('valorAlmoco','Valor por almoço (R$)',rb.valorAlmoco,'0,00','number','step="0.01" min="0"')}
+          ${fi('valorJantar','Valor por jantar (R$)',rb.valorJantar,'0,00','number','step="0.01" min="0"')}
+        </div>
+        ${fi('obs','Observações',rb.obs,'Informações adicionais...')}
+      </div>
+    </div>
+
+    <!-- PRÉVIA DOS TOTAIS -->
+    ${rb.periodoInicio&&rb.periodoFim?`
+    <div class="card" style="margin-bottom:16px">
+      <div class="cat-label">📊 Prévia — refeições no período</div>
+      ${totalGeral===0
+        ?`<div style="text-align:center;color:var(--ink3);padding:16px;font-size:13px">Nenhum pedido encontrado no período${rb.empresaId?' para esta empresa':''}</div>`
+        :`<table class="tbl" style="margin-bottom:12px">
+          <thead><tr><th>Data</th><th style="text-align:center">☀️ Almoços</th><th style="text-align:center">🌙 Jantares</th><th style="text-align:center">Total</th></tr></thead>
+          <tbody>${tabelaDias}
+            <tr style="background:var(--cream);font-weight:700">
+              <td>TOTAL</td>
+              <td style="text-align:center;color:#C8901A">${totalAlmoco}</td>
+              <td style="text-align:center;color:#1A3A6B">${totalJantar}</td>
+              <td style="text-align:center">${totalGeral}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:14px">
+          ${vAlm>0?`<div>☀️ ${totalAlmoco} × ${fmtBRL(vAlm)} = <b>${fmtBRL(totalAlmoco*vAlm)}</b></div>`:''}
+          ${vJan>0?`<div>🌙 ${totalJantar} × ${fmtBRL(vJan)} = <b>${fmtBRL(totalJantar*vJan)}</b></div>`:''}
+          ${totalValor>0?`<div style="font-size:16px;font-weight:700;color:var(--primary);margin-left:auto">TOTAL: ${fmtBRL(totalValor)}</div>`:''}
+        </div>`}
+    </div>`:''}
+
+    <button class="btn btn-primary btn-w" style="padding:14px;font-size:15px" data-act="gerar-recibo">🖨️ Gerar e imprimir recibo PDF</button>
+  </div>`;
+}
+
+function gerarReciboPDF(){
+  const rb=S.recibo;
+  const r=S.rest||{name:'Restaurante'};
+
+  // Calcular totais
+  let totalAlmoco=0,totalJantar=0;
+  let tabelaDias='';
+  if(rb.periodoInicio&&rb.periodoFim){
+    const from=new Date(rb.periodoInicio);
+    const to=new Date(rb.periodoFim);
+    to.setHours(23,59,59);
+    const filtered=S.orders.filter(o=>{
+      if(o.status==='cancelado') return false;
+      if(rb.empresaId&&o.companyId!==rb.empresaId) return false;
+      if(!o.date) return false;
+      const p=o.date.split('/');
+      const d=new Date(p[2],p[1]-1,p[0]);
+      return d>=from&&d<=to;
+    });
+    const byDate={};
+    filtered.forEach(o=>{
+      if(!byDate[o.date]) byDate[o.date]={a:0,j:0};
+      if(o.meal==='Almoço') byDate[o.date].a+=orderQty(o);
+      else byDate[o.date].j+=orderQty(o);
+    });
+    const sortedDates=Object.keys(byDate).sort((a,b)=>{
+      const p=s=>{const q=s.split('/');return new Date(q[2],q[1]-1,q[0]);};
+      return p(a)-p(b);
+    });
+    sortedDates.forEach(d=>{
+      const v=byDate[d];
+      const label=formatDateLabel(d);
+      totalAlmoco+=v.a; totalJantar+=v.j;
+      tabelaDias+=`<tr><td>${esc(label)}</td><td class="c">${v.a||'—'}</td><td class="c">${v.j||'—'}</td><td class="c cb">${v.a+v.j}</td></tr>`;
+    });
+  }
+  const totalGeral=totalAlmoco+totalJantar;
+  const vAlm=parseFloat(rb.valorAlmoco)||0;
+  const vJan=parseFloat(rb.valorJantar)||0;
+  const totalValor=(totalAlmoco*vAlm)+(totalJantar*vJan);
+  const fmtBRL=v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  const fmtDate=s=>{if(!s)return'';const p=s.split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:s;}
+
+  const periodoLabel=rb.periodoInicio&&rb.periodoFim?`${fmtDate(rb.periodoInicio)} a ${fmtDate(rb.periodoFim)}`:'—';
+
+  const logoHtml=r.logo?`<img src="${r.logo}" style="width:60px;height:60px;object-fit:cover;border-radius:10px;margin-right:14px;vertical-align:middle"/>`:'';
+
+  const htmlOut=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
+  <title>Recibo Nº ${esc(rb.numRecibo)} — ${esc(rb.contratadaNome||r.name)}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#1A1208;background:#fff;padding:32px;max-width:820px;margin:0 auto;font-size:13px}
+    /* Cabeçalho */
+    .header{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;background:#1A1208;color:#FBF7EE;border-radius:10px;margin-bottom:20px}
+    .header-left{display:flex;align-items:center}
+    .header-title{font-size:11px;opacity:.6;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+    .header-name{font-size:20px;font-weight:700}
+    .header-right{text-align:right;font-size:12px;opacity:.8;line-height:1.8}
+    .recibo-num{font-size:28px;font-weight:700;color:#FBF7EE}
+    /* Seções */
+    .section{margin-bottom:16px}
+    .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #e0d8c8}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+    .box{background:#f9f5ee;border-radius:8px;padding:14px 16px}
+    .box p{margin-bottom:5px;line-height:1.5;font-size:12.5px}
+    .box .label{font-size:10.5px;color:#888;text-transform:uppercase;letter-spacing:.3px}
+    .box .val{font-weight:600;color:#1A1208}
+    /* Tabela */
+    table{width:100%;border-collapse:collapse;margin-bottom:8px}
+    th{background:#1A1208;color:#FBF7EE;padding:8px 12px;font-size:11.5px;font-weight:700}
+    td{padding:8px 12px;border-bottom:1px solid #e8e0d0;font-size:12.5px}
+    .c{text-align:center}
+    .cb{font-weight:700}
+    tr:nth-child(even) td{background:#faf6ee}
+    .total-row td{background:#f0e8d0;font-weight:700;font-size:13px;border-top:2px solid #C8901A}
+    /* Valores */
+    .valores{background:#1A1208;color:#FBF7EE;border-radius:8px;padding:16px 20px;margin:16px 0}
+    .val-line{display:flex;justify-content:space-between;padding:4px 0;font-size:13px;opacity:.85}
+    .val-total{display:flex;justify-content:space-between;padding:10px 0 0;border-top:1px solid rgba(255,255,255,.2);font-size:17px;font-weight:700;margin-top:6px}
+    /* Assinatura */
+    .assinatura{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:32px}
+    .ass-box{text-align:center;padding-top:48px;border-top:1px solid #1A1208;font-size:12px;color:#555}
+    /* Rodapé */
+    .footer{text-align:center;font-size:10px;color:#aaa;margin-top:24px;padding-top:12px;border-top:1px solid #e0d8c8}
+    .btn{margin-top:20px;padding:10px 24px;background:#1A1208;color:#FBF7EE;border:none;border-radius:8px;font-size:14px;cursor:pointer;display:inline-block}
+    @media print{.btn{display:none}body{padding:16px}}
+  </style></head>
+  <body>
+
+  <!-- CABEÇALHO -->
+  <div class="header">
+    <div class="header-left">
+      ${logoHtml}
+      <div>
+        <div class="header-title">Recibo de prestação de serviços</div>
+        <div class="header-name">${esc(rb.contratadaNome||r.name||'—')}</div>
+        ${rb.contratadaCNPJ?`<div style="font-size:11px;opacity:.65;margin-top:3px">CNPJ/CPF: ${esc(rb.contratadaCNPJ)}</div>`:''}
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="recibo-num">Nº ${esc(rb.numRecibo||'001')}</div>
+      <div>Período: ${esc(periodoLabel)}</div>
+      ${rb.dataPagamento?`<div>Pagamento: ${fmtDate(rb.dataPagamento)}</div>`:''}
+      <div style="font-size:10px;opacity:.5;margin-top:4px">Emitido em ${new Date().toLocaleDateString('pt-BR')}</div>
+    </div>
+  </div>
+
+  <!-- PARTES -->
+  <div class="grid2">
+    <div class="box">
+      <div class="section-title">Contratada (Prestador)</div>
+      <p><span class="label">Nome/Razão Social</span><br><span class="val">${esc(rb.contratadaNome||'—')}</span></p>
+      ${rb.contratadaCNPJ?`<p><span class="label">CNPJ/CPF</span><br><span class="val">${esc(rb.contratadaCNPJ)}</span></p>`:''}
+      ${rb.contratadaEndereco?`<p><span class="label">Endereço</span><br><span class="val">${esc(rb.contratadaEndereco)}</span></p>`:''}
+      ${rb.contratadaTelefone?`<p><span class="label">Telefone</span><br><span class="val">${esc(rb.contratadaTelefone)}</span></p>`:''}
+    </div>
+    <div class="box">
+      <div class="section-title">Contratante (Cliente)</div>
+      <p><span class="label">Nome/Razão Social</span><br><span class="val">${esc(rb.contratanteNome||'—')}</span></p>
+      ${rb.contratanteCNPJ?`<p><span class="label">CNPJ/CPF</span><br><span class="val">${esc(rb.contratanteCNPJ)}</span></p>`:''}
+      ${rb.contratanteEndereco?`<p><span class="label">Endereço</span><br><span class="val">${esc(rb.contratanteEndereco)}</span></p>`:''}
+    </div>
+  </div>
+
+  <!-- REFEIÇÕES POR DIA -->
+  <div class="section">
+    <div class="section-title">Detalhamento de refeições — ${esc(periodoLabel)}</div>
+    ${totalGeral===0
+      ?`<p style="text-align:center;color:#999;padding:20px">Nenhum pedido encontrado no período.</p>`
+      :`<table>
+        <thead><tr><th>Data</th><th class="c">☀️ Almoços</th><th class="c">🌙 Jantares</th><th class="c">Total</th></tr></thead>
+        <tbody>
+          ${tabelaDias}
+          <tr class="total-row"><td>TOTAL GERAL</td><td class="c">${totalAlmoco}</td><td class="c">${totalJantar}</td><td class="c">${totalGeral}</td></tr>
+        </tbody>
+      </table>`}
+  </div>
+
+  <!-- VALORES -->
+  ${totalGeral>0&&totalValor>0?`
+  <div class="valores">
+    ${vAlm>0?`<div class="val-line"><span>☀️ Almoços: ${totalAlmoco} × ${fmtBRL(vAlm)}</span><span>${fmtBRL(totalAlmoco*vAlm)}</span></div>`:''}
+    ${vJan>0?`<div class="val-line"><span>🌙 Jantares: ${totalJantar} × ${fmtBRL(vJan)}</span><span>${fmtBRL(totalJantar*vJan)}</span></div>`:''}
+    <div class="val-total"><span>TOTAL A PAGAR</span><span>${fmtBRL(totalValor)}</span></div>
+  </div>`:''}
+
+  <!-- DADOS BANCÁRIOS -->
+  ${(rb.banco||rb.pix)?`
+  <div class="box" style="margin-bottom:16px">
+    <div class="section-title">Dados bancários para pagamento</div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;font-size:12.5px">
+      ${rb.banco?`<div><span class="label">Banco</span><br><span class="val">${esc(rb.banco)}</span></div>`:''}
+      ${rb.agencia?`<div><span class="label">Agência</span><br><span class="val">${esc(rb.agencia)}</span></div>`:''}
+      ${rb.conta?`<div><span class="label">Conta ${esc(rb.tipoConta)}</span><br><span class="val">${esc(rb.conta)}</span></div>`:''}
+      ${rb.pix?`<div><span class="label">Chave PIX</span><br><span class="val">${esc(rb.pix)}</span></div>`:''}
+    </div>
+  </div>`:''}
+
+  <!-- OBSERVAÇÕES -->
+  ${rb.obs?`<div class="box" style="margin-bottom:16px"><div class="section-title">Observações</div><p style="font-size:12.5px">${esc(rb.obs)}</p></div>`:''}
+
+  <!-- ASSINATURA -->
+  <div class="assinatura">
+    <div class="ass-box">${esc(rb.contratadaNome||r.name||'Contratada')}<br><span style="font-size:10px;color:#aaa">Prestador de serviços</span></div>
+    <div class="ass-box">${esc(rb.contratanteNome||'Contratante')}<br><span style="font-size:10px;color:#aaa">Cliente</span></div>
+  </div>
+
+  <div class="footer">Recibo emitido pelo sistema Menu Hand · ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
+
+  <button class="btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+  </body></html>`;
+
+  const w=window.open('','_blank');
+  if(w){w.document.write(htmlOut);w.document.close();setTimeout(()=>w.print(),700);}
+}
+  const r=S.rest||{};
 function rAdminSettings(){
   const r=S.rest||{};
   const logoPreview=r.logo
@@ -2444,6 +2789,28 @@ function bindEvents(){
   const pdfTo=document.getElementById('pdf-to');
   if(pdfFrom) pdfFrom.addEventListener('change',e=>{S.pdfDateFrom=inputValToDateStr(e.target.value);render();});
   if(pdfTo)   pdfTo.addEventListener('change',e=>{S.pdfDateTo=inputValToDateStr(e.target.value);render();});
+  // Recibo fields — bind all
+  ['numRecibo','contratadaNome','contratadaCNPJ','contratadaEndereco','contratadaTelefone',
+   'contratanteNome','contratanteCNPJ','contratanteEndereco',
+   'banco','agencia','conta','pix','tipoConta',
+   'periodoInicio','periodoFim','dataPagamento','valorAlmoco','valorJantar','obs'].forEach(field=>{
+    const el=document.getElementById(`rb-${field}`);
+    if(!el) return;
+    const ev=el.tagName==='SELECT'?'change':'input';
+    el.addEventListener(ev,e=>{
+      S.recibo[field]=e.target.value;
+      // Re-render only on period/company change to update preview
+      if(['periodoInicio','periodoFim','empresaId','valorAlmoco','valorJantar'].includes(field)) render();
+    });
+  });
+  const rbEmpresa=document.getElementById('rb-empresaId');
+  if(rbEmpresa) rbEmpresa.addEventListener('change',e=>{
+    S.recibo.empresaId=e.target.value;
+    // Auto-fill contratante name if company selected
+    const co=S.companies.find(c=>c.id===e.target.value);
+    if(co&&!S.recibo.contratanteNome){S.recibo.contratanteNome=co.name;}
+    render();
+  });
   // Avulso fields
   const an=document.getElementById('avulso-name');
   if(an) an.addEventListener('input',e=>{S.avulsoName=e.target.value;});
@@ -3116,6 +3483,7 @@ function act(a){
     </body></html>`;
     const w=window.open('','_blank');if(w){w.document.write(htmlOut);w.document.close();setTimeout(()=>w.print(),600);}
   }
+  else if(a==='gerar-recibo'){gerarReciboPDF();}
   else if(a==='open-retro'){
     S.overlay=null;
     abrirRetroDialog();
@@ -3581,7 +3949,7 @@ function injectMobileNav(){
   const pendingAcc=S.screen==='admin'?S.accessRequests.filter(r=>r.status==='pending').length:0;
   const tabs=S.screen==='app'
     ?[{id:'home',ic:'🏠',lb:'Cardápio'},{id:'orders',ic:'🧾',lb:'Pedidos'},{id:'chat',ic:'💬',lb:'Chat',badge:unreadChat},{id:'profile',ic:'👤',lb:'Perfil'}]
-    :[{id:'orders',ic:'📋',lb:'Pedidos',badge:newOrders},{id:'resumo',ic:'📊',lb:'Resumo'},{id:'menu',ic:'🍽️',lb:'Cardápio'},{id:'companies',ic:'🏢',lb:'Empresas'},{id:'access',ic:'🔑',lb:'Acessos',badge:pendingAcc},{id:'chats',ic:'💬',lb:'Chats',badge:unreadChat},{id:'settings',ic:'⚙️',lb:'Config'}];
+    :[{id:'orders',ic:'📋',lb:'Pedidos',badge:newOrders},{id:'resumo',ic:'📊',lb:'Resumo'},{id:'menu',ic:'🍽️',lb:'Cardápio'},{id:'companies',ic:'🏢',lb:'Empresas'},{id:'access',ic:'🔑',lb:'Acessos',badge:pendingAcc},{id:'chats',ic:'💬',lb:'Chats',badge:unreadChat},{id:'recibo',ic:'🧾',lb:'Recibo'},{id:'settings',ic:'⚙️',lb:'Config'}];
   const nav=document.createElement('div');
   nav.className='mobile-bnav';
   nav.innerHTML=tabs.map(t=>`
