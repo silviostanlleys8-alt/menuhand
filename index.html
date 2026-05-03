@@ -2260,7 +2260,7 @@ function rRetroModal(){
       </table>`}
 
     <div class="modal-footer" style="margin-top:16px">
-      <button class="btn btn-primary" style="flex:1" data-act="confirm-retro">✓ Lançar ${totGeral>0?totGeral+' refeições':''}</button>
+      <button class="btn btn-primary" style="flex:1" id="btn-confirm-retro" onclick="act('confirm-retro')">✓ Lançar refeições</button>
       <button class="btn btn-outline" data-close="overlay">Cancelar</button>
     </div>
   </div></div>`;
@@ -2358,6 +2358,12 @@ function bindEvents(){
     if(S.avulsoSel.has(id))S.avulsoSel.delete(id);else S.avulsoSel.add(id);
     render();
   }));
+  // Botão confirmar retroativo — listener direto como failsafe
+  const btnRetro=document.getElementById('btn-confirm-retro');
+  if(btnRetro){
+    btnRetro.onclick=null; // remove inline onclick
+    btnRetro.addEventListener('click',e=>{e.stopPropagation();e.preventDefault();act('confirm-retro');});
+  }
   // PDF date inputs
   const pdfFrom=document.getElementById('pdf-from');
   const pdfTo=document.getElementById('pdf-to');
@@ -3041,21 +3047,21 @@ function act(a){
     S.overlay='retro';render();
   }
   else if(a==='confirm-retro'){
-    // Ler data
     const dateEl=document.getElementById('retro-date');
     const dateInputVal=dateEl?.value||S.retroDate||'';
     if(!dateInputVal){alert('Selecione uma data.');return;}
     const dateStr=inputValToDateStr(dateInputVal);
-    if(!dateStr){alert('Data inválida.');return;}
+    if(!dateStr){alert('Data inválida: '+dateInputVal);return;}
     const parsedDate=parseDateStr(dateStr);
     const monthStr=`${String(parsedDate.getMonth()+1).padStart(2,'0')}/${parsedDate.getFullYear()}`;
     const dayName=DAYSF[parsedDate.getDay()];
 
-    // Ler todos os inputs direto do DOM
+    const inputs=document.querySelectorAll('.retro-input');
+    if(inputs.length===0){alert('Inputs não encontrados. Tente fechar e abrir o modal novamente.');return;}
+
     let count=0;
     const newOrders=[];
-    const inputs=document.querySelectorAll('.retro-input');
-    const vals={}; // {idx: {almoco:n, jantar:n}}
+    const vals={};
     inputs.forEach(el=>{
       const idx=parseInt(el.dataset.retroidx);
       const meal=el.dataset.retromeal;
@@ -3100,7 +3106,7 @@ function act(a){
       }
     });
 
-    if(count===0){alert('Informe pelo menos uma refeição.');return;}
+    if(count===0){alert('Todos os valores estão zerados. Preencha almoços ou jantares.');return;}
 
     newOrders.forEach(order=>{
       S.orders.unshift(order);
