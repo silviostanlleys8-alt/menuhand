@@ -625,7 +625,7 @@ function migrateMenu(old){
   return m;
 }
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function genId(){return Math.random().toString(36).slice(2,9)+Date.now().toString(36);}
+function orderQty(o){return(o.retro&&o.qty>0)?o.qty:1;} // pedidos retroativos têm qty > 1
 function nowT(){return new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 function todayStr(){const d=new Date();return`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;}
 function thisMonthStr(){const d=new Date();return`${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;}
@@ -687,6 +687,8 @@ const S={
   ordersMonth: 'todos',
   // Pedido avulso (admin)
   avulsoName:'',avulsoCompanyId:'',avulsoMeal:'almoco',avulsoDay:new Date().getDay(),avulsoObs:'',avulsoSel:new Set(),avulsoDate:'',avulsoItemsManual:'',
+  // Lançamento retroativo em lote
+  retroDate:'',retroRows:[],
   // PDF date range
   pdfDateFrom:'',pdfDateTo:'',
   menu: buildEmptyMenu(),
@@ -1402,6 +1404,7 @@ function rAdminOrders(){
     </div>
     <button class="btn btn-outline btn-sm" data-act="open-pdf">📄 Exportar relatório</button>
     <button class="btn btn-primary btn-sm" data-act="open-avulso">➕ Pedido avulso</button>
+    <button class="btn btn-outline btn-sm" data-act="open-retro" style="border-color:var(--gold);color:var(--gold-d)">📅 Lançamento retroativo</button>
   </div>
 
   <!-- Pedidos agrupados por data -->
@@ -1895,6 +1898,7 @@ function rOverlay(){
   if(S.overlay==='pdf')          return rPDFModal();
   if(S.overlay==='copy-day')     return rCopyDayModal();
   if(S.overlay==='avulso')       return rAvulsoModal();
+  if(S.overlay==='retro')        return rRetroModal();
   return '';
 }
 
@@ -2184,6 +2188,84 @@ function rAvulsoModal(){
   </div></div>`;
 }
 
+function rRetroModal(){
+  const todayInput=dateToInput(todayStr());
+  const dateVal=S.retroDate||todayInput;
+  const parsedDate=dateVal?parseDateStr(inputValToDateStr(dateVal)):new Date();
+  const dayName=DAYSF[parsedDate.getDay()]||'';
+  const dateLabel=dateVal?`${inputValToDateStr(dateVal)} — ${dayName}`:'';
+
+  // Linha por empresa
+  const rows=S.retroRows;
+  const empresaRows=S.companies.map((co,idx)=>{
+    const row=rows[idx]||{almoco:0,jantar:0};
+    const total=(parseInt(row.almoco)||0)+(parseInt(row.jantar)||0);
+    return`<tr>
+      <td style="font-weight:600;font-size:13px">
+        ${co.logo?`<img src="${co.logo}" style="width:22px;height:22px;border-radius:5px;object-fit:cover;vertical-align:middle;margin-right:6px"/>`:`<span style="margin-right:6px">${co.icon||'🏢'}</span>`}
+        ${esc(co.name)}
+      </td>
+      <td style="padding:6px 8px">
+        <input type="number" min="0" max="999" class="fi retro-input" data-retroidx="${idx}" data-retromeal="almoco"
+          value="${row.almoco||''}" placeholder="0"
+          style="width:70px;text-align:center;padding:6px 8px;font-size:14px;font-weight:700"/>
+      </td>
+      <td style="padding:6px 8px">
+        <input type="number" min="0" max="999" class="fi retro-input" data-retroidx="${idx}" data-retromeal="jantar"
+          value="${row.jantar||''}" placeholder="0"
+          style="width:70px;text-align:center;padding:6px 8px;font-size:14px;font-weight:700"/>
+      </td>
+      <td style="text-align:center;font-weight:700;font-size:15px;color:${total>0?'var(--primary)':'var(--ink3)'}">${total||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  // Totais
+  const totAlmoco=rows.reduce((s,r)=>s+(parseInt(r?.almoco)||0),0);
+  const totJantar=rows.reduce((s,r)=>s+(parseInt(r?.jantar)||0),0);
+  const totGeral=totAlmoco+totJantar;
+
+  return`<div class="modal-overlay" data-close="overlay"><div class="modal wide" style="max-width:560px">
+    <div class="modal-title">📅 Lançamento retroativo em lote</div>
+    <div class="modal-sub">Informe a quantidade de refeições por empresa em uma data específica</div>
+
+    <!-- Data -->
+    <div class="fg" style="margin-bottom:16px">
+      <label class="fl">📅 Data do lançamento</label>
+      <input class="fi" type="date" id="retro-date" value="${dateVal}"
+        style="max-width:200px;font-size:15px;font-weight:600"/>
+      ${dateLabel?`<div style="font-size:12px;color:var(--ink3);margin-top:4px">${esc(dateLabel)}</div>`:''}
+    </div>
+
+    <!-- Tabela de empresas -->
+    ${S.companies.length===0
+      ?`<div style="text-align:center;padding:24px;color:var(--ink3)">Nenhuma empresa cadastrada.</div>`
+      :`<table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="background:var(--cream2)">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;color:var(--ink2);border-bottom:2px solid var(--border)">Empresa</th>
+            <th style="padding:10px 8px;text-align:center;font-size:12px;font-weight:700;color:#C8901A;border-bottom:2px solid var(--border)">☀️ Almoços</th>
+            <th style="padding:10px 8px;text-align:center;font-size:12px;font-weight:700;color:#1A3A6B;border-bottom:2px solid var(--border)">🌙 Jantares</th>
+            <th style="padding:10px 8px;text-align:center;font-size:12px;font-weight:700;color:var(--ink2);border-bottom:2px solid var(--border)">Total</th>
+          </tr>
+        </thead>
+        <tbody>${empresaRows}</tbody>
+        ${totGeral>0?`<tfoot>
+          <tr style="background:var(--cream);border-top:2px solid var(--border)">
+            <td style="padding:10px 12px;font-weight:700;font-size:13px">TOTAL</td>
+            <td style="text-align:center;font-weight:700;font-size:15px;color:#C8901A">${totAlmoco}</td>
+            <td style="text-align:center;font-weight:700;font-size:15px;color:#1A3A6B">${totJantar}</td>
+            <td style="text-align:center;font-weight:700;font-size:16px;color:var(--primary)">${totGeral}</td>
+          </tr>
+        </tfoot>`:''}
+      </table>`}
+
+    <div class="modal-footer" style="margin-top:16px">
+      <button class="btn btn-primary" style="flex:1" data-act="confirm-retro">✓ Lançar ${totGeral>0?totGeral+' refeições':''}</button>
+      <button class="btn btn-outline" data-close="overlay">Cancelar</button>
+    </div>
+  </div></div>`;
+}
+
 function rPDFModal(){
   const now=new Date();
   const thisMonth=thisMonthStr();
@@ -2290,7 +2372,28 @@ function bindEvents(){
   document.querySelectorAll('[data-resumoview]').forEach(el=>el.addEventListener('click',()=>{S.resumoView=el.dataset.resumoview;render();}));
   document.querySelectorAll('[data-resumoday]').forEach(el=>el.addEventListener('click',()=>{S.resumoDay=parseInt(el.dataset.resumoday);render();}));
   document.querySelectorAll('[data-resumodate]').forEach(el=>el.addEventListener('click',()=>{S.resumoDate=el.dataset.resumodate;render();}));
-  document.querySelectorAll('[data-resumomeal]').forEach(el=>el.addEventListener('click',()=>{S.resumoMeal=el.dataset.resumomeal;render();}));
+  const rd=document.getElementById('retro-date');
+  if(rd) rd.addEventListener('change',e=>{S.retroDate=e.target.value;render();});
+  document.querySelectorAll('.retro-input').forEach(el=>{
+    el.addEventListener('input',e=>{
+      const idx=parseInt(el.dataset.retroidx);
+      const meal=el.dataset.retromeal;
+      if(!S.retroRows[idx]) S.retroRows[idx]={almoco:0,jantar:0};
+      S.retroRows[idx][meal]=parseInt(e.target.value)||0;
+      // Atualiza total da linha sem re-render completo
+      const row=el.closest('tr');
+      if(row){
+        const a=parseInt(S.retroRows[idx].almoco)||0;
+        const j=parseInt(S.retroRows[idx].jantar)||0;
+        const tot=row.querySelector('td:last-child');
+        if(tot) tot.textContent=(a+j)||'—';
+        // Atualiza botão de confirmar
+        const totGeral=S.retroRows.reduce((s,r)=>s+(parseInt(r?.almoco)||0)+(parseInt(r?.jantar)||0),0);
+        const btn=document.querySelector('[data-act="confirm-retro"]');
+        if(btn) btn.textContent=`✓ Lançar ${totGeral>0?totGeral+' refeições':''}`;
+      }
+    });
+  });
   const omf=document.getElementById('orders-month-filter');
   if(omf) omf.addEventListener('change',e=>{S.ordersMonth=e.target.value;render();});
   document.querySelectorAll('[data-adminday]').forEach(el=>el.addEventListener('click',()=>{S.adminMenuDay=parseInt(el.dataset.adminday);render();}));
@@ -2821,9 +2924,9 @@ function act(a){
     filtrados.forEach(o=>{
       const k=o.date||o.day||'Sem data';
       if(!byDate[k]) byDate[k]={total:0,almoco:0,jantar:0,mes:o.month||''};
-      byDate[k].total++;
-      if(o.meal==='Almoço') byDate[k].almoco++;
-      else byDate[k].jantar++;
+      byDate[k].total+=orderQty(o);
+      if(o.meal==='Almoço') byDate[k].almoco+=orderQty(o);
+      else byDate[k].jantar+=orderQty(o);
     });
     const sortedDates=Object.keys(byDate).sort((a,b)=>{
       const p=s=>{const q=s.split('/');return q.length===3?new Date(q[2],q[1]-1,q[0]):new Date(0);};
@@ -2927,6 +3030,76 @@ function act(a){
     </body></html>`;
     const w=window.open('','_blank');if(w){w.document.write(htmlOut);w.document.close();setTimeout(()=>w.print(),600);}
   }
+  else if(a==='open-retro'){
+    S.retroDate=dateToInput(todayStr());
+    S.retroRows=S.companies.map(()=>({almoco:0,jantar:0}));
+    S.overlay='retro';render();
+  }
+  else if(a==='confirm-retro'){
+    const dateEl=document.getElementById('retro-date');
+    const dateInputVal=dateEl?.value||S.retroDate||dateToInput(todayStr());
+    const dateStr=inputValToDateStr(dateInputVal)||todayStr();
+    if(!dateStr){alert('Selecione uma data.');return;}
+    const parsedDate=parseDateStr(dateStr);
+    const monthStr=`${String(parsedDate.getMonth()+1).padStart(2,'0')}/${parsedDate.getFullYear()}`;
+    const dayName=DAYSF[parsedDate.getDay()];
+    let count=0;
+    const newOrders=[];
+    // Ler valores atuais dos inputs na tela
+    document.querySelectorAll('.retro-input').forEach(el=>{
+      const idx=parseInt(el.dataset.retroidx);
+      const meal=el.dataset.retromeal;
+      const val=parseInt(el.value)||0;
+      if(!S.retroRows[idx]) S.retroRows[idx]={almoco:0,jantar:0};
+      S.retroRows[idx][meal]=val;
+    });
+    S.companies.forEach((co,idx)=>{
+      const row=S.retroRows[idx]||{almoco:0,jantar:0};
+      const almoco=parseInt(row.almoco)||0;
+      const jantar=parseInt(row.jantar)||0;
+      // Criar 1 pedido consolidado por refeição por empresa
+      if(almoco>0){
+        const oid=genId();
+        newOrders.push({
+          id:oid,userId:'admin-retro',
+          name:`${almoco} refeição${almoco>1?'s':''} — ${co.name}`,
+          company:co.name,companyId:co.id,
+          meal:'Almoço',day:dayName,
+          items:`${almoco} almoço${almoco>1?'s':''}`,
+          obs:`Lançamento retroativo · ${almoco} pessoa${almoco>1?'s':''}`,
+          status:'confirmado',time:'00:00',
+          date:dateStr,month:monthStr,
+          isNew:false,avulso:true,retro:true,qty:almoco
+        });
+        count+=almoco;
+      }
+      if(jantar>0){
+        const oid=genId();
+        newOrders.push({
+          id:oid,userId:'admin-retro',
+          name:`${jantar} refeição${jantar>1?'s':''} — ${co.name}`,
+          company:co.name,companyId:co.id,
+          meal:'Jantar',day:dayName,
+          items:`${jantar} jantar${jantar>1?'s':''}`,
+          obs:`Lançamento retroativo · ${jantar} pessoa${jantar>1?'s':''}`,
+          status:'confirmado',time:'00:00',
+          date:dateStr,month:monthStr,
+          isNew:false,avulso:true,retro:true,qty:jantar
+        });
+        count+=jantar;
+      }
+    });
+    if(count===0){alert('Informe pelo menos uma refeição.');return;}
+    // Salvar todos
+    newOrders.forEach(order=>{
+      S.orders.unshift(order);
+      if(db&&rid()){
+        db.doc(`mh/${rid()}/orders/${order.id}`).set({...order,ts:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn(e));
+      }
+    });
+    S.retroRows=[];S.overlay=null;render();
+    showToast('✅','Lançamento retroativo salvo!',`${count} refeição${count>1?'s':''} em ${dateStr}`,null);
+  }
   else if(a==='open-avulso'){
     S.avulsoName='';S.avulsoCompanyId=S.companies[0]?.id||'';
     S.avulsoMeal='almoco';S.avulsoDay=new Date().getDay();
@@ -3017,8 +3190,8 @@ function act(a){
     });
 
     // ── Totais gerais ──
-    const totalAlmoco=filtered.filter(o=>o.meal==='Almoço').length;
-    const totalJantar=filtered.filter(o=>o.meal==='Jantar').length;
+    const totalAlmoco=filtered.filter(o=>o.meal==='Almoço').reduce((s,o)=>s+orderQty(o),0);
+    const totalJantar=filtered.filter(o=>o.meal==='Jantar').reduce((s,o)=>s+orderQty(o),0);
 
     // ── Cabeçalho do restaurante ──
     const restLogo=r.logo
@@ -3051,9 +3224,9 @@ function act(a){
     // ── Seção de cada empresa ──
     const companySections=sortedCompanies.map(co=>{
       const list=byCompany[co];
-      const coAlmoco=list.filter(o=>o.meal==='Almoço').length;
-      const coJantar=list.filter(o=>o.meal==='Jantar').length;
-      const coTotal=list.length;
+      const coAlmoco=list.filter(o=>o.meal==='Almoço').reduce((s,o)=>s+orderQty(o),0);
+      const coJantar=list.filter(o=>o.meal==='Jantar').reduce((s,o)=>s+orderQty(o),0);
+      const coTotal=coAlmoco+coJantar;
 
       // Funcionários cadastrados desta empresa (de S.users/S.companies)
       const coObj=S.companies.find(c=>c.name===co);
@@ -3079,8 +3252,8 @@ function act(a){
 
       const dailyRows=coDates.map(d=>{
         const dl=coByDate[d];
-        const da=dl.filter(o=>o.meal==='Almoço').length;
-        const dj=dl.filter(o=>o.meal==='Jantar').length;
+        const da=dl.filter(o=>o.meal==='Almoço').reduce((s,o)=>s+orderQty(o),0);
+        const dj=dl.filter(o=>o.meal==='Jantar').reduce((s,o)=>s+orderQty(o),0);
         const label=d.length===10?formatDateLabel(d):d;
         return`<tr>
           <td>${esc(label)}</td>
@@ -3189,7 +3362,7 @@ function act(a){
       <!-- TOTAL GERAL -->
       ${filtered.length>0?`
       <div class="grand-total">
-        <div class="gt-item"><div class="gt-val">${filtered.length}</div><div class="gt-lbl">Total Geral</div></div>
+        <div class="gt-item"><div class="gt-val">${filtered.reduce((s,o)=>s+orderQty(o),0)}</div><div class="gt-lbl">Total Geral</div></div>
         <div class="gt-item"><div class="gt-val">${totalAlmoco}</div><div class="gt-lbl">☀️ Almoços</div></div>
         <div class="gt-item"><div class="gt-val">${totalJantar}</div><div class="gt-lbl">🌙 Jantares</div></div>
         <div class="gt-item"><div class="gt-val">${sortedCompanies.length}</div><div class="gt-lbl">Empresas</div></div>
