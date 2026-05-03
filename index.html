@@ -2283,8 +2283,7 @@ function rRetroModal(){
 
     <div class="fg" style="margin-bottom:18px">
       <label class="fl">📅 Data do lançamento</label>
-      <input class="fi" type="date" id="retro-date" value="${dateVal}" style="max-width:200px;font-size:15px;font-weight:600"
-        onchange="S.retroDate=this.value"/>
+      <input class="fi" type="date" id="retro-date" value="${dateVal}" style="max-width:200px;font-size:15px;font-weight:600"/>
       ${dateLabel?`<div style="font-size:12px;color:var(--ink3);margin-top:4px">${esc(dateLabel)}</div>`:''}
     </div>
 
@@ -2302,8 +2301,8 @@ function rRetroModal(){
       </table>`}
 
     <div style="display:flex;gap:10px">
-      <button class="btn btn-primary" style="flex:1;padding:13px;font-size:15px" onclick="confirmarRetro()">✓ Lançar refeições</button>
-      <button class="btn btn-outline" onclick="S.overlay=null;render()">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1;padding:13px;font-size:15px" id="btn-lancar-retro">✓ Lançar refeições</button>
+      <button class="btn btn-outline" id="btn-cancelar-retro">Cancelar</button>
     </div>
   </div></div>`;
 }
@@ -2400,6 +2399,11 @@ function bindEvents(){
     if(S.avulsoSel.has(id))S.avulsoSel.delete(id);else S.avulsoSel.add(id);
     render();
   }));
+  // Botões do modal retroativo — listeners diretos
+  const btnLancar=document.getElementById('btn-lancar-retro');
+  if(btnLancar) btnLancar.addEventListener('click',e=>{e.stopPropagation();confirmarRetro();});
+  const btnCancelarRetro=document.getElementById('btn-cancelar-retro');
+  if(btnCancelarRetro) btnCancelarRetro.addEventListener('click',e=>{e.stopPropagation();S.overlay=null;render();});
   // Botão confirmar retroativo — listener direto como failsafe
   const btnRetro=document.getElementById('btn-confirm-retro');
   if(btnRetro){
@@ -2426,7 +2430,7 @@ function bindEvents(){
   document.querySelectorAll('[data-resumoday]').forEach(el=>el.addEventListener('click',()=>{S.resumoDay=parseInt(el.dataset.resumoday);render();}));
   document.querySelectorAll('[data-resumodate]').forEach(el=>el.addEventListener('click',()=>{S.resumoDate=el.dataset.resumodate;render();}));
   const rd=document.getElementById('retro-date');
-  if(rd) rd.addEventListener('change',e=>{S.retroDate=e.target.value;render();});
+  if(rd) rd.addEventListener('change',e=>{S.retroDate=e.target.value;});
   document.querySelectorAll('.retro-input').forEach(el=>{
     el.addEventListener('input',e=>{
       const idx=parseInt(el.dataset.retroidx);
