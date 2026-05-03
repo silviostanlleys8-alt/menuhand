@@ -2189,60 +2189,60 @@ function rAvulsoModal(){
 }
 
 function confirmarRetro(){
-  alert('INICIANDO confirmarRetro — função foi chamada!');
+  const _genId=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36);
+  const _inputValToDateStr=v=>{if(!v)return'';const p=v.split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:'';}
+  const _parseDateStr=s=>{const p=s.split('/');return p.length===3?new Date(p[2],p[1]-1,p[0]):new Date(0);}
+  const _DAYSF=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  const _nowT=()=>new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+
   const dateEl=document.getElementById('retro-date');
-  if(!dateEl){alert('ERRO: retro-date não encontrado');return;}
+  if(!dateEl){alert('Selecione uma data.');return;}
   const dateInputVal=dateEl.value;
-  alert('DATA: '+dateInputVal);
-  if(!dateInputVal){alert('ERRO: data vazia');return;}
-  const dateStr=inputValToDateStr(dateInputVal);
-  alert('dateStr: '+dateStr);
-  if(!dateStr){alert('ERRO: dateStr vazio');return;}
-  const parsedDate=parseDateStr(dateStr);
+  if(!dateInputVal){alert('Selecione uma data.');return;}
+  const dateStr=_inputValToDateStr(dateInputVal);
+  if(!dateStr){alert('Data inválida.');return;}
+  const parsedDate=_parseDateStr(dateStr);
   const monthStr=`${String(parsedDate.getMonth()+1).padStart(2,'0')}/${parsedDate.getFullYear()}`;
-  const dayName=DAYSF[parsedDate.getDay()];
-  alert('monthStr: '+monthStr+' | dayName: '+dayName);
+  const dayName=_DAYSF[parsedDate.getDay()];
+  const timeStr=_nowT();
+
   let count=0;
   const newOrders=[];
-  alert('Empresas: '+S.companies.length);
-  // DEBUG: verificar primeiro input
-  const debugA=document.getElementById('retro-a-0');
-  const debugJ=document.getElementById('retro-j-0');
-  alert('DEBUG retro-a-0: '+(debugA?'ENCONTRADO valor='+debugA.value:'NULL')
-    +' | retro-j-0: '+(debugJ?'ENCONTRADO valor='+debugJ.value:'NULL'));
-  try{
-    S.companies.forEach((co,idx)=>{
-      const aEl=document.getElementById(`retro-a-${idx}`);
-      const jEl=document.getElementById(`retro-j-${idx}`);
-      const almoco=parseInt(aEl?.value)||0;
-      const jantar=parseInt(jEl?.value)||0;
-      alert(`${co.name}: almoco=${almoco} jantar=${jantar} (aEl=${aEl?'ok':'NULL'} jEl=${jEl?'ok':'NULL'})`);
-      if(almoco>0){
-        const oid=genId();
-        newOrders.push({id:oid,userId:'admin-retro',name:`${almoco} refeição${almoco>1?'s':''} — ${co.name}`,company:co.name,companyId:co.id,meal:'Almoço',day:dayName,items:`${almoco} almoço${almoco>1?'s':''}`,obs:`Lançamento retroativo · ${almoco} pessoa${almoco>1?'s':''}`,status:'confirmado',time:'00:00',date:dateStr,month:monthStr,isNew:false,avulso:true,retro:true,qty:almoco});
-        count+=almoco;
-      }
-      if(jantar>0){
-        const oid=genId();
-        newOrders.push({id:oid,userId:'admin-retro',name:`${jantar} refeição${jantar>1?'s':''} — ${co.name}`,company:co.name,companyId:co.id,meal:'Jantar',day:dayName,items:`${jantar} jantar${jantar>1?'s':''}`,obs:`Lançamento retroativo · ${jantar} pessoa${jantar>1?'s':''}`,status:'confirmado',time:'00:00',date:dateStr,month:monthStr,isNew:false,avulso:true,retro:true,qty:jantar});
-        count+=jantar;
-      }
-    });
-  }catch(err){
-    alert('ERRO no forEach: '+err.message+' | stack: '+(err.stack||'').slice(0,200));
-    return;
-  }
-  alert('count='+count+' | newOrders='+newOrders.length);
-  if(count===0){alert('ERRO: count=0, nada para lançar');return;}
+
+  S.companies.forEach((co,idx)=>{
+    const aEl=document.getElementById(`retro-a-${idx}`);
+    const jEl=document.getElementById(`retro-j-${idx}`);
+    const almoco=parseInt(aEl?.value)||0;
+    const jantar=parseInt(jEl?.value)||0;
+    if(almoco>0){
+      const oid=_genId();
+      newOrders.push({id:oid,userId:'admin-retro',name:`${almoco} refeição${almoco>1?'s':''} — ${co.name}`,company:co.name,companyId:co.id,meal:'Almoço',day:dayName,items:`${almoco} almoço${almoco>1?'s':''}`,obs:`Lançamento retroativo · ${almoco} pessoa${almoco>1?'s':''}`,status:'confirmado',time:timeStr,date:dateStr,month:monthStr,isNew:false,avulso:true,retro:true,qty:almoco});
+      count+=almoco;
+    }
+    if(jantar>0){
+      const oid=_genId();
+      newOrders.push({id:oid,userId:'admin-retro',name:`${jantar} refeição${jantar>1?'s':''} — ${co.name}`,company:co.name,companyId:co.id,meal:'Jantar',day:dayName,items:`${jantar} jantar${jantar>1?'s':''}`,obs:`Lançamento retroativo · ${jantar} pessoa${jantar>1?'s':''}`,status:'confirmado',time:timeStr,date:dateStr,month:monthStr,isNew:false,avulso:true,retro:true,qty:jantar});
+      count+=jantar;
+    }
+  });
+
+  if(count===0){alert('Preencha pelo menos uma quantidade.');return;}
+
   newOrders.forEach(order=>{
     S.orders.unshift(order);
-    if(db&&rid()) db.doc(`mh/${rid()}/orders/${order.id}`).set({...order,ts:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>alert('Firebase erro: '+e));
+    if(db&&rid()){
+      db.doc(`mh/${rid()}/orders/${order.id}`)
+        .set({...order,ts:firebase.firestore.FieldValue.serverTimestamp()})
+        .catch(e=>console.warn('Firebase erro:',e));
+    }
   });
-  alert('SUCESSO! Fechando modal...');
+
   fecharRetroDialog();
   S.overlay=null;
   render();
-  showToast('✅','Lançamento salvo!',`${count} refeição${count>1?'s':''} em ${dateStr}`,null);
+  if(typeof showToast==='function'){
+    showToast('✅','Lançamento salvo!',`${count} refeição${count>1?'s':''} em ${dateStr}`,null);
+  }
 }
 window.confirmarRetro=confirmarRetro;
 
