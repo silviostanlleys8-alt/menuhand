@@ -2198,10 +2198,8 @@ function confirmarRetro(){
   const parsedDate=parseDateStr(dateStr);
   const monthStr=`${String(parsedDate.getMonth()+1).padStart(2,'0')}/${parsedDate.getFullYear()}`;
   const dayName=DAYSF[parsedDate.getDay()];
-
   let count=0;
   const newOrders=[];
-
   S.companies.forEach((co,idx)=>{
     const aEl=document.getElementById(`retro-a-${idx}`);
     const jEl=document.getElementById(`retro-j-${idx}`);
@@ -2209,103 +2207,102 @@ function confirmarRetro(){
     const jantar=parseInt(jEl?.value)||0;
     if(almoco>0){
       const oid=genId();
-      newOrders.push({
-        id:oid,userId:'admin-retro',
-        name:`${almoco} refeição${almoco>1?'s':''} — ${co.name}`,
-        company:co.name,companyId:co.id,
-        meal:'Almoço',day:dayName,
-        items:`${almoco} almoço${almoco>1?'s':''}`,
-        obs:`Lançamento retroativo · ${almoco} pessoa${almoco>1?'s':''}`,
-        status:'confirmado',time:'00:00',
-        date:dateStr,month:monthStr,
-        isNew:false,avulso:true,retro:true,qty:almoco
-      });
+      newOrders.push({id:oid,userId:'admin-retro',name:`${almoco} refeição${almoco>1?'s':''} — ${co.name}`,company:co.name,companyId:co.id,meal:'Almoço',day:dayName,items:`${almoco} almoço${almoco>1?'s':''}`,obs:`Lançamento retroativo · ${almoco} pessoa${almoco>1?'s':''}`,status:'confirmado',time:'00:00',date:dateStr,month:monthStr,isNew:false,avulso:true,retro:true,qty:almoco});
       count+=almoco;
     }
     if(jantar>0){
       const oid=genId();
-      newOrders.push({
-        id:oid,userId:'admin-retro',
-        name:`${jantar} refeição${jantar>1?'s':''} — ${co.name}`,
-        company:co.name,companyId:co.id,
-        meal:'Jantar',day:dayName,
-        items:`${jantar} jantar${jantar>1?'s':''}`,
-        obs:`Lançamento retroativo · ${jantar} pessoa${jantar>1?'s':''}`,
-        status:'confirmado',time:'00:00',
-        date:dateStr,month:monthStr,
-        isNew:false,avulso:true,retro:true,qty:jantar
-      });
+      newOrders.push({id:oid,userId:'admin-retro',name:`${jantar} refeição${jantar>1?'s':''} — ${co.name}`,company:co.name,companyId:co.id,meal:'Jantar',day:dayName,items:`${jantar} jantar${jantar>1?'s':''}`,obs:`Lançamento retroativo · ${jantar} pessoa${jantar>1?'s':''}`,status:'confirmado',time:'00:00',date:dateStr,month:monthStr,isNew:false,avulso:true,retro:true,qty:jantar});
       count+=jantar;
     }
   });
-
   if(count===0){alert('Preencha pelo menos uma quantidade.');return;}
-
   newOrders.forEach(order=>{
     S.orders.unshift(order);
-    if(db&&rid()){
-      db.doc(`mh/${rid()}/orders/${order.id}`)
-        .set({...order,ts:firebase.firestore.FieldValue.serverTimestamp()})
-        .catch(e=>console.warn(e));
-    }
+    if(db&&rid()) db.doc(`mh/${rid()}/orders/${order.id}`).set({...order,ts:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn(e));
   });
-  S.overlay=null;render();
+  fecharRetroDialog();
+  S.overlay=null;
+  render();
   showToast('✅','Lançamento salvo!',`${count} refeição${count>1?'s':''} em ${dateStr}`,null);
 }
 window.confirmarRetro=confirmarRetro;
 
-function rRetroModal(){
-  const todayInput=dateToInput(todayStr());
-  const dateVal=S.retroDate||todayInput;
-  const parsedDate=dateVal?parseDateStr(inputValToDateStr(dateVal)):new Date();
-  const dayName=DAYSF[parsedDate.getDay()]||'';
-  const dateLabel=dateVal?`${inputValToDateStr(dateVal)} — ${dayName}`:'';
+function abrirRetroDialog(){
+  // Remove dialog anterior se existir
+  const old=document.getElementById('retro-dialog');
+  if(old) old.remove();
 
-  const empresaRows=S.companies.map((co,idx)=>`
+  const todayInput=dateToInput(todayStr());
+
+  const rows=S.companies.map((co,idx)=>`
     <tr>
-      <td style="padding:10px 12px;font-weight:600;font-size:13px">
-        ${co.logo?`<img src="${co.logo}" style="width:22px;height:22px;border-radius:5px;object-fit:cover;vertical-align:middle;margin-right:6px"/>`:`<span style="margin-right:6px">${co.icon||'🏢'}</span>`}
+      <td style="padding:10px 12px;font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px">
+        ${co.logo?`<img src="${co.logo}" style="width:22px;height:22px;border-radius:4px;object-fit:cover"/>`:`<span>${co.icon||'🏢'}</span>`}
         ${esc(co.name)}
       </td>
       <td style="padding:6px 8px;text-align:center">
-        <input type="number" min="0" max="999" id="retro-a-${idx}" placeholder="0"
-          style="width:70px;text-align:center;padding:7px 8px;font-size:15px;font-weight:700;border:1px solid var(--border);border-radius:8px;background:var(--white)"/>
+        <input type="number" id="retro-a-${idx}" min="0" max="999" placeholder="0"
+          style="width:70px;text-align:center;padding:8px;font-size:16px;font-weight:700;border:2px solid #ddd;border-radius:8px;outline:none"/>
       </td>
       <td style="padding:6px 8px;text-align:center">
-        <input type="number" min="0" max="999" id="retro-j-${idx}" placeholder="0"
-          style="width:70px;text-align:center;padding:7px 8px;font-size:15px;font-weight:700;border:1px solid var(--border);border-radius:8px;background:var(--white)"/>
+        <input type="number" id="retro-j-${idx}" min="0" max="999" placeholder="0"
+          style="width:70px;text-align:center;padding:8px;font-size:16px;font-weight:700;border:2px solid #ddd;border-radius:8px;outline:none"/>
       </td>
     </tr>`).join('');
 
-  return`<div class="modal-overlay" data-close="overlay"><div class="modal wide" style="max-width:520px">
-    <div class="modal-title">📅 Lançamento retroativo em lote</div>
-    <div class="modal-sub">Informe a quantidade por empresa — os dados são salvos no histórico</div>
-
-    <div class="fg" style="margin-bottom:18px">
-      <label class="fl">📅 Data do lançamento</label>
-      <input class="fi" type="date" id="retro-date" value="${dateVal}" style="max-width:200px;font-size:15px;font-weight:600"/>
-      ${dateLabel?`<div style="font-size:12px;color:var(--ink3);margin-top:4px">${esc(dateLabel)}</div>`:''}
+  const dlg=document.createElement('dialog');
+  dlg.id='retro-dialog';
+  dlg.style.cssText='padding:0;border:none;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.4);max-width:520px;width:calc(100vw - 32px);font-family:"DM Sans",sans-serif;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);margin:0;z-index:9999';
+  dlg.innerHTML=`
+    <div style="background:#1A1208;color:#FBF7EE;padding:18px 22px;border-radius:16px 16px 0 0;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:17px;font-weight:700">📅 Lançamento retroativo em lote</div>
+        <div style="font-size:12px;opacity:.7;margin-top:2px">Informe quantidades por empresa</div>
+      </div>
+      <button id="retro-close-x" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center">✕</button>
     </div>
-
-    ${S.companies.length===0
-      ?`<div style="text-align:center;padding:24px;color:var(--ink3)">Nenhuma empresa cadastrada.</div>`
-      :`<table style="width:100%;border-collapse:collapse;margin-bottom:18px">
+    <div style="padding:20px 22px;background:#fff">
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-bottom:6px">📅 Data do lançamento</label>
+        <input type="date" id="retro-date" value="${todayInput}"
+          style="padding:10px 14px;border:2px solid #ddd;border-radius:10px;font-size:15px;font-weight:600;color:#1A1208;outline:none;cursor:pointer"/>
+      </div>
+      ${S.companies.length===0?'<p style="text-align:center;color:#999">Nenhuma empresa cadastrada.</p>':`
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
         <thead>
-          <tr style="background:var(--cream2)">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;border-bottom:2px solid var(--border)">Empresa</th>
-            <th style="padding:10px 8px;text-align:center;font-size:12px;font-weight:700;color:#C8901A;border-bottom:2px solid var(--border)">☀️ Almoços</th>
-            <th style="padding:10px 8px;text-align:center;font-size:12px;font-weight:700;color:#1A3A6B;border-bottom:2px solid var(--border)">🌙 Jantares</th>
+          <tr style="background:#f5f0e8">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;color:#666;font-weight:700;border-bottom:2px solid #e0d8c8">Empresa</th>
+            <th style="padding:10px 8px;text-align:center;font-size:12px;color:#C8901A;font-weight:700;border-bottom:2px solid #e0d8c8">☀️ Almoços</th>
+            <th style="padding:10px 8px;text-align:center;font-size:12px;color:#1A3A6B;font-weight:700;border-bottom:2px solid #e0d8c8">🌙 Jantares</th>
           </tr>
         </thead>
-        <tbody>${empresaRows}</tbody>
+        <tbody>${rows}</tbody>
       </table>`}
+      <div style="display:flex;gap:10px">
+        <button id="retro-confirmar" style="flex:1;padding:14px;background:#1A1208;color:#FBF7EE;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer">✓ Lançar refeições</button>
+        <button id="retro-cancelar" style="padding:14px 20px;background:#f5f0e8;color:#1A1208;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer">Cancelar</button>
+      </div>
+    </div>`;
 
-    <div style="display:flex;gap:10px">
-      <button class="btn btn-primary" style="flex:1;padding:13px;font-size:15px" id="btn-lancar-retro">✓ Lançar refeições</button>
-      <button class="btn btn-outline" id="btn-cancelar-retro">Cancelar</button>
-    </div>
-  </div></div>`;
+  document.body.appendChild(dlg);
+  dlg.showModal();
+
+  // Listeners diretos nos botões do dialog
+  document.getElementById('retro-confirmar').addEventListener('click',()=>confirmarRetro());
+  document.getElementById('retro-cancelar').addEventListener('click',()=>fecharRetroDialog());
+  document.getElementById('retro-close-x').addEventListener('click',()=>fecharRetroDialog());
+  dlg.addEventListener('click',e=>{if(e.target===dlg)fecharRetroDialog();});
 }
+window.abrirRetroDialog=abrirRetroDialog;
+
+function fecharRetroDialog(){
+  const dlg=document.getElementById('retro-dialog');
+  if(dlg){dlg.close();dlg.remove();}
+}
+window.fecharRetroDialog=fecharRetroDialog;
+
+function rRetroModal(){return '';} // não usa mais o sistema de overlay
 
 function rPDFModal(){
   const now=new Date();
@@ -3102,9 +3099,8 @@ function act(a){
     const w=window.open('','_blank');if(w){w.document.write(htmlOut);w.document.close();setTimeout(()=>w.print(),600);}
   }
   else if(a==='open-retro'){
-    S.retroDate=dateToInput(todayStr());
-    S.retroRows=S.companies.map(()=>({almoco:0,jantar:0}));
-    S.overlay='retro';render();
+    S.overlay=null;
+    abrirRetroDialog();
   }
   else if(a==='confirm-retro'){
     const dateEl=document.getElementById('retro-date');
