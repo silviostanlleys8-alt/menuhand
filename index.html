@@ -2335,7 +2335,12 @@ function rPDFModal(){
 // ═══ BIND EVENTS ═══
 function bindEvents(){
   document.querySelectorAll('[data-close="overlay"]').forEach(el=>{
-    el.addEventListener('click',e=>{if(e.target===el||el.tagName==='BUTTON'){S.overlay=null;render();}});
+    el.addEventListener('click',e=>{
+      // Só fecha se clicou no backdrop (o próprio overlay) ou num botão com data-close
+      const isBackdrop=e.target===el;
+      const isCloseBtn=e.target.closest('[data-close="overlay"]')&&e.target.tagName==='BUTTON';
+      if(isBackdrop||isCloseBtn){S.overlay=null;render();}
+    });
   });
   document.querySelectorAll('[data-act]').forEach(el=>{
     el.addEventListener('click',e=>{e.stopPropagation();act(el.dataset.act);});
