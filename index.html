@@ -3464,7 +3464,21 @@ function act(a){
   }
   else if(a==='export-resumo'){
     const r=S.rest||{name:'Restaurante'};
-    const ativos=S.orders.filter(o=>o.status!=='cancelado');
+    const todosAtivos=S.orders.filter(o=>o.status!=='cancelado');
+
+    // ── Aplicar filtro de mês (igual ao resumo na tela) ──
+    const mesAtivo=S.resumoMes||thisMonthStr();
+    const ativos=mesAtivo==='todos'
+      ?todosAtivos
+      :todosAtivos.filter(o=>{
+          if(o.month===mesAtivo) return true;
+          if(!o.month&&o.date){
+            const p=o.date.split('/');
+            return `${p[1]}/${p[2]}`===mesAtivo;
+          }
+          return false;
+        });
+
     const isDiario=S.resumoView==='diario';
 
     // ── Base de dados conforme visão ──
@@ -3481,23 +3495,24 @@ function act(a){
       tituloVista=`Resumo Diário — ${selLabel}`;
     } else {
       base=ativos;
-      tituloVista='Resumo Geral de Itens';
+      tituloVista=`Resumo Geral — ${mesAtivo==='todos'?'Todos os períodos':mesAtivo}`;
     }
     const filtrados=S.resumoMeal==='todos'?base:base.filter(o=>o.meal===S.resumoMeal);
 
-    // ── Itens consolidados ──
+    // ── Itens consolidados (usando orderQty para retroativos) ──
     const totalItems={};
     filtrados.forEach(o=>{
+      const qty=orderQty(o);
       (o.items||'').split(',').map(i=>i.trim()).filter(Boolean).forEach(item=>{
         const clean=item.replace(/^[\p{Emoji}\s]+/u,'').trim()||item;
         if(!totalItems[clean]) totalItems[clean]={count:0,original:item,meals:{}};
-        totalItems[clean].count++;
-        totalItems[clean].meals[o.meal]=(totalItems[clean].meals[o.meal]||0)+1;
+        totalItems[clean].count+=qty;
+        totalItems[clean].meals[o.meal]=(totalItems[clean].meals[o.meal]||0)+qty;
       });
     });
     const sortedItems=Object.entries(totalItems).sort((a,b)=>b[1].count-a[1].count);
 
-    // ── Contagem por data ──
+    // ── Contagem por data (usando orderQty) ──
     const byDate={};
     filtrados.forEach(o=>{
       const k=o.date||o.day||'Sem data';
@@ -3511,18 +3526,18 @@ function act(a){
       return p(a)-p(b);
     });
 
-    // ── Contagem por mês ──
+    // ── Contagem por mês (usando orderQty) ──
     const byMonth={};
     filtrados.forEach(o=>{
       const k=o.month||'Sem mês';
       if(!byMonth[k]) byMonth[k]={total:0,almoco:0,jantar:0};
-      byMonth[k].total++;
-      if(o.meal==='Almoço') byMonth[k].almoco++;
-      else byMonth[k].jantar++;
+      byMonth[k].total+=orderQty(o);
+      if(o.meal==='Almoço') byMonth[k].almoco+=orderQty(o);
+      else byMonth[k].jantar+=orderQty(o);
     });
 
-    const totalAlmoco=filtrados.filter(o=>o.meal==='Almoço').reduce((s,o)=>s+orderQty(o),0);
-    const totalJantar=filtrados.filter(o=>o.meal==='Jantar').reduce((s,o)=>s+orderQty(o),0);
+    const totalAlmoco=filtrados.reduce((s,o)=>s+(o.meal==='Almoço'?orderQty(o):0),0);
+    const totalJantar=filtrados.reduce((s,o)=>s+(o.meal==='Jantar'?orderQty(o):0),0);
 
     const itemRows=sortedItems.map(([,d],i)=>
       `<tr><td>${i+1}</td><td>${esc(d.original)}</td><td style="text-align:center;font-weight:700">${d.count}</td><td style="text-align:center">${d.meals['Almoço']||0}</td><td style="text-align:center">${d.meals['Jantar']||0}</td></tr>`
