@@ -625,7 +625,8 @@ function migrateMenu(old){
   return m;
 }
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function orderQty(o){return(o.retro&&o.qty>0)?o.qty:1;} // pedidos retroativos têm qty > 1
+function orderQty(o){return(o.retro&&o.qty>0)?o.qty:1;}
+function genId(){return Math.random().toString(36).slice(2,9)+Date.now().toString(36);}
 function nowT(){return new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 function todayStr(){const d=new Date();return`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;}
 function thisMonthStr(){const d=new Date();return`${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;}
@@ -3372,13 +3373,12 @@ function act(a){
     const icon=document.getElementById('ni-icon')?.value||'🍽️';
     const name=document.getElementById('ni-name')?.value?.trim();
     const desc=document.getElementById('ni-desc')?.value||'';
-    alert(`SAVE-ITEM CHAMADO: name="${name}" cat="${cat}" icon="${icon}"`);
     if(!name){alert('Digite o nome do item.');return;}
-    const d=S.adminMenuDay;
+    const dayIdx=S.adminMenuDay;
     if(!S.menu[S.meal]) S.menu[S.meal]={};
-    if(!S.menu[S.meal][d]) S.menu[S.meal][d]=buildEmptyDayCats(S.meal);
-    if(!S.menu[S.meal][d][cat]) S.menu[S.meal][d][cat]=[];
-    S.menu[S.meal][d][cat].push({id:'i'+genId(),icon,name,desc});
+    if(!S.menu[S.meal][dayIdx]) S.menu[S.meal][dayIdx]=buildEmptyDayCats(S.meal);
+    if(!S.menu[S.meal][dayIdx][cat]) S.menu[S.meal][dayIdx][cat]=[];
+    S.menu[S.meal][dayIdx][cat].push({id:'i'+genId(),icon,name,desc});
     if(db&&rid())fSet(`mh/${rid()}/menu/data`,S.menu);
     S.newItemName='';S.newItemDesc='';S.overlay=null;render();
   }
