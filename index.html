@@ -2345,7 +2345,7 @@ function rAddItemModal(){
     </div>
     <div class="fg"><label class="fl">Descrição</label><input class="fi" id="ni-desc" value="${esc(S.newItemDesc)}" placeholder="Ex: Com ervas e limão"/></div>
     <div class="modal-footer">
-      <button class="btn btn-primary" style="flex:1" data-act="save-item">Adicionar</button>
+      <button class="btn btn-primary" style="flex:1" data-act="save-item" onclick="act('save-item')">Adicionar</button>
       <button class="btn btn-outline" data-close="overlay">Cancelar</button>
     </div>
   </div></div>`;
@@ -2764,8 +2764,13 @@ function bindEvents(){
   // Overlay close — usa capture:false para não interferir com botões internos
   document.querySelectorAll('[data-close="overlay"]').forEach(el=>{
     el.addEventListener('click',e=>{
-      // Só fecha se clicou EXATAMENTE no backdrop ou num botão que TEM data-close
-      if(e.target===el||(e.target.tagName==='BUTTON'&&e.target.dataset.close==='overlay')){
+      // Fecha APENAS se clicou no backdrop escuro ou num botão explicitamente com data-close
+      // NUNCA fecha se clicou em botão com data-act (ação do sistema)
+      const clickedEl=e.target;
+      const isBackdrop=clickedEl===el;
+      const isExplicitClose=clickedEl.dataset&&clickedEl.dataset.close==='overlay';
+      const isActionBtn=clickedEl.closest&&clickedEl.closest('[data-act]');
+      if((isBackdrop||isExplicitClose)&&!isActionBtn){
         S.overlay=null;render();
       }
     });
