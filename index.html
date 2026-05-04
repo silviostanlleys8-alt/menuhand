@@ -1593,9 +1593,9 @@ function rAdminResumo(){
     return`${viewTabs}
     <!-- Cards topo -->
     <div class="grid-3" style="margin-bottom:18px">
-      <div class="stat-card"><div class="stat-icon" style="background:var(--gold-l)">📋</div><div><div class="stat-val">${ativos.length}</div><div class="stat-lbl">Pedidos ativos</div></div></div>
-      <div class="stat-card"><div class="stat-icon" style="background:var(--success-l)">🍽️</div><div><div class="stat-val">${totalSorted.length}</div><div class="stat-lbl">Itens distintos</div></div></div>
-      <div class="stat-card"><div class="stat-icon" style="background:#E8EAF6">🏢</div><div><div class="stat-val">${Object.keys(countByCompany).length}</div><div class="stat-lbl">Empresas</div></div></div>
+      <div class="stat-card"><div class="stat-icon" style="background:var(--gold-l)">🍽️</div><div><div class="stat-val">${ativos.reduce((s,o)=>s+orderQty(o),0)}</div><div class="stat-lbl">Total refeições</div></div></div>
+      <div class="stat-card"><div class="stat-icon" style="background:var(--success-l)">☀️</div><div><div class="stat-val">${ativos.filter(o=>o.meal==='Almoço').reduce((s,o)=>s+orderQty(o),0)}</div><div class="stat-lbl">Almoços</div></div></div>
+      <div class="stat-card"><div class="stat-icon" style="background:#E8EAF6">🌙</div><div><div class="stat-val">${ativos.filter(o=>o.meal==='Jantar').reduce((s,o)=>s+orderQty(o),0)}</div><div class="stat-lbl">Jantares</div></div></div>
     </div>
     ${mealFilter}
     <!-- Ranking -->
@@ -3592,7 +3592,7 @@ function act(a){
     <!-- Totais gerais -->
     <h2>📊 Totais gerais</h2>
     <div class="summary">
-      <div class="sum-box"><div class="sum-val">${filtrados.length}</div><div class="sum-lbl">Total refeições</div></div>
+      <div class="sum-box"><div class="sum-val">${totalAlmoco+totalJantar}</div><div class="sum-lbl">Total refeições</div></div>
       <div class="sum-box"><div class="sum-val" style="color:#C8901A">${totalAlmoco}</div><div class="sum-lbl">☀️ Almoços</div></div>
       <div class="sum-box"><div class="sum-val" style="color:#1A3A6B">${totalJantar}</div><div class="sum-lbl">🌙 Jantares</div></div>
     </div>
