@@ -1738,7 +1738,7 @@ function rAdminMenu(){
         <button class="mt-btn${S.meal==='almoco'?' act':''}" data-meal="almoco">☀️ Almoço</button>
         <button class="mt-btn${S.meal==='jantar'?' act':''}" data-meal="jantar">🌙 Jantar</button>
       </div>
-      <button class="btn btn-outline" data-act="open-add-item" onclick="act('open-add-item')">+ Adicionar item</button>
+      <button class="btn btn-outline" data-act="open-add-item">+ Adicionar item</button>
       <button class="btn btn-outline" data-act="clear-day" style="color:var(--danger);border-color:rgba(198,40,40,.25)">🗑️ Limpar dia</button>
       <button class="btn btn-outline" data-act="copy-day-modal" style="color:var(--ink2)">📋 Copiar para…</button>
     </div>
@@ -2345,7 +2345,7 @@ function rAddItemModal(){
     </div>
     <div class="fg"><label class="fl">Descrição</label><input class="fi" id="ni-desc" value="${esc(S.newItemDesc)}" placeholder="Ex: Com ervas e limão"/></div>
     <div class="modal-footer">
-      <button class="btn btn-primary" style="flex:1" data-act="save-item" onclick="act('save-item')">Adicionar</button>
+      <button class="btn btn-primary" style="flex:1" data-act="save-item">Adicionar</button>
       <button class="btn btn-outline" data-close="overlay">Cancelar</button>
     </div>
   </div></div>`;
@@ -2762,18 +2762,18 @@ function rPDFModal(){
 // ═══ BIND EVENTS ═══
 function bindEvents(){
   // Overlay close — usa capture:false para não interferir com botões internos
-  document.querySelectorAll('[data-close="overlay"]').forEach(el=>{
-    el.addEventListener('click',e=>{
-      // Fecha APENAS se clicou no backdrop escuro ou num botão explicitamente com data-close
-      // NUNCA fecha se clicou em botão com data-act (ação do sistema)
-      const clickedEl=e.target;
-      const isBackdrop=clickedEl===el;
-      const isExplicitClose=clickedEl.dataset&&clickedEl.dataset.close==='overlay';
-      const isActionBtn=clickedEl.closest&&clickedEl.closest('[data-act]');
-      if((isBackdrop||isExplicitClose)&&!isActionBtn){
-        S.overlay=null;render();
-      }
+  // Fechar overlay clicando no backdrop (mousedown para não conflitar com botões internos)
+  document.querySelectorAll('.modal-overlay').forEach(el=>{
+    // Fechar ao clicar no backdrop (fundo escuro), não no modal em si
+    el.addEventListener('mousedown',e=>{
+      if(e.target===el){S.overlay=null;render();}
     });
+  });
+  // Fechar ao clicar em botão com data-close="overlay"
+  document.querySelectorAll('[data-close="overlay"]').forEach(el=>{
+    if(el.tagName==='BUTTON'||el.tagName==='A'){
+      el.addEventListener('click',e=>{e.stopPropagation();S.overlay=null;render();});
+    }
   });
   // Botões do modal retroativo — registrados ANTES do data-act para ter prioridade
   const btnLancar=document.getElementById('btn-lancar-retro');
@@ -2794,7 +2794,11 @@ function bindEvents(){
     });
   }
   document.querySelectorAll('[data-act]').forEach(el=>{
-    el.addEventListener('click',e=>{e.stopPropagation();act(el.dataset.act);});
+    el.addEventListener('click',e=>{
+      e.stopImmediatePropagation();
+      e.stopPropagation();
+      act(el.dataset.act);
+    });
   });
   document.querySelectorAll('[data-atab]').forEach(el=>el.addEventListener('click',()=>{S.atab=el.dataset.atab;if(S.atab!=='chats')S.threadUid=null;closeSidebar();render();}));
   document.querySelectorAll('[data-ptab]').forEach(el=>el.addEventListener('click',()=>{S.portalTab=el.dataset.ptab;S.adminPassErr=false;render();}));
