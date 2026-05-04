@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="Menu Hand"/>
 <meta name="description" content="Cardápio digital e pedidos online para restaurantes e empresas parceiras"/>
-<title>Menu Hand — Cardápio Digital v6.1</title>
+<title>Menu Hand — Cardápio Digital v7.0</title>
 <link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;Menu Hand&quot;,&quot;short_name&quot;:&quot;Menu Hand&quot;,&quot;start_url&quot;:&quot;./&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%231A1208&quot;,&quot;theme_color&quot;:&quot;%231A1208&quot;}"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
@@ -3372,6 +3372,7 @@ function act(a){
     const icon=document.getElementById('ni-icon')?.value||'🍽️';
     const name=document.getElementById('ni-name')?.value?.trim();
     const desc=document.getElementById('ni-desc')?.value||'';
+    alert(`SAVE-ITEM CHAMADO: name="${name}" cat="${cat}" icon="${icon}"`);
     if(!name){alert('Digite o nome do item.');return;}
     const d=S.adminMenuDay;
     if(!S.menu[S.meal]) S.menu[S.meal]={};
