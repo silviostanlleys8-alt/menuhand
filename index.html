@@ -684,6 +684,7 @@ const S={
   resumoView: 'geral',
   resumoDay: new Date().getDay(),
   resumoDate: '',
+  resumoMes: '',
   ordersMonth: 'todos',
   // Pedido avulso (admin)
   avulsoName:'',avulsoCompanyId:'',avulsoMeal:'almoco',avulsoDay:new Date().getDay(),avulsoObs:'',avulsoSel:new Set(),avulsoDate:'',avulsoItemsManual:'',
@@ -1475,8 +1476,46 @@ function rAdminOrders(){
 }
 
 function rAdminResumo(){
-  const ativos=S.orders.filter(o=>o.status!=='cancelado');
-  if(!ativos.length) return`<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">Nenhum pedido ativo</div><div>Os itens solicitados aparecerão aqui em tempo real</div></div>`;
+  const todosAtivos=S.orders.filter(o=>o.status!=='cancelado');
+  if(!todosAtivos.length) return`<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">Nenhum pedido ativo</div><div>Os itens solicitados aparecerão aqui em tempo real</div></div>`;
+
+  // ── Filtro de mês ──
+  const thisMonth=thisMonthStr();
+  // Default: mês atual
+  if(!S.resumoMes) S.resumoMes=thisMonth;
+
+  // Meses disponíveis
+  const mesesDisp=[...new Set(todosAtivos.map(o=>o.month).filter(Boolean))].sort((a,b)=>{
+    const p=s=>{const q=s.split('/');return new Date(q[1],q[0]-1);};
+    return p(b)-p(a);
+  });
+  // Incluir mês atual mesmo sem pedidos
+  if(!mesesDisp.includes(thisMonth)) mesesDisp.unshift(thisMonth);
+
+  // Filtrar pelo mês selecionado (ou todos se 'todos')
+  const ativos=S.resumoMes==='todos'
+    ?todosAtivos
+    :todosAtivos.filter(o=>{
+        if(o.month===S.resumoMes) return true;
+        // Fallback: pedidos sem month mas com date no mês
+        if(!o.month&&o.date){
+          const p=o.date.split('/');
+          const m=`${p[1]}/${p[2]}`;
+          return m===S.resumoMes;
+        }
+        return false;
+      });
+
+  // Seletor de mês
+  const mesSeletor=`
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+    <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink3)">Mês:</label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="mt-btn${S.resumoMes==='todos'?' act':''}" data-resumomes="todos" style="font-size:12px;padding:6px 12px">Todos</button>
+      ${mesesDisp.map(m=>`<button class="mt-btn${S.resumoMes===m?' act':''}" data-resumomes="${m}" style="font-size:12px;padding:6px 12px">${m}${m===thisMonth?' ●':''}</button>`).join('')}
+    </div>
+    <span style="font-size:12px;color:var(--ink3);margin-left:4px">${ativos.length} pedido${ativos.length!==1?'s':''}</span>
+  </div>`;
 
   // ── Helpers ──
   function parseItems(o){
@@ -1528,7 +1567,8 @@ function rAdminResumo(){
   <div style="display:flex;gap:0;background:var(--cream2);border-radius:10px;padding:3px;margin-bottom:18px;width:fit-content">
     <button class="mt-btn${S.resumoView==='geral'?' act':''}" data-resumoview="geral" style="padding:8px 20px">📊 Visão geral</button>
     <button class="mt-btn${S.resumoView==='diario'?' act':''}" data-resumoview="diario" style="padding:8px 20px">📅 Resumo diário</button>
-  </div>`;
+  </div>
+  ${mesSeletor}`;
 
   // ── Filtro de refeição ──
   const mealFilter=`
@@ -2761,64 +2801,113 @@ function rPDFModal(){
 
 // ═══ BIND EVENTS ═══
 function bindEvents(){
-  // Overlay close — usa capture:false para não interferir com botões internos
-  // Fechar overlay clicando no backdrop (mousedown para não conflitar com botões internos)
-  document.querySelectorAll('.modal-overlay').forEach(el=>{
-    // Fechar ao clicar no backdrop (fundo escuro), não no modal em si
-    el.addEventListener('mousedown',e=>{
-      if(e.target===el){S.overlay=null;render();}
-    });
-  });
-  // Fechar ao clicar em botão com data-close="overlay"
-  document.querySelectorAll('[data-close="overlay"]').forEach(el=>{
-    if(el.tagName==='BUTTON'||el.tagName==='A'){
-      el.addEventListener('click',e=>{e.stopPropagation();S.overlay=null;render();});
-    }
-  });
-  // Botões do modal retroativo — registrados ANTES do data-act para ter prioridade
-  const btnLancar=document.getElementById('btn-lancar-retro');
-  if(btnLancar){
-    btnLancar.addEventListener('click',e=>{
-      e.stopImmediatePropagation();
-      e.stopPropagation();
-      e.preventDefault();
-      confirmarRetro();
+  // ── EVENT DELEGATION ──
+  // Um listener no document captura todos os cliques - elimina problemas de bubble
+  if(!window._eventsRegistered){
+    window._eventsRegistered=true;
+
+    document.addEventListener('click',function(e){
+      const t=e.target;
+
+      // 1. data-act — ação principal (maior prioridade)
+      const actEl=t.closest('[data-act]');
+      if(actEl&&actEl.dataset.act){
+        e.stopPropagation();
+        act(actEl.dataset.act);
+        return;
+      }
+
+      // 2. data-close="overlay" — fechar modal
+      const closeEl=t.closest('[data-close="overlay"]');
+      if(closeEl&&closeEl.dataset&&closeEl.dataset.close==='overlay'&&closeEl!==t.closest('.modal-overlay')){
+        e.stopPropagation();
+        S.overlay=null;render();
+        return;
+      }
+
+      // 3. Backdrop do overlay (clicar no fundo escuro)
+      if(t.classList&&t.classList.contains('modal-overlay')){
+        S.overlay=null;render();
+        return;
+      }
+
+      // 4. Abas admin
+      const atabEl=t.closest('[data-atab]');
+      if(atabEl){S.atab=atabEl.dataset.atab;if(S.atab!=='chats')S.threadUid=null;closeSidebar();render();return;}
+
+      // 5. Abas portal
+      const ptabEl=t.closest('[data-ptab]');
+      if(ptabEl){S.portalTab=ptabEl.dataset.ptab;S.adminPassErr=false;render();return;}
+
+      // 6. Refeição
+      const mealEl=t.closest('[data-meal]');
+      if(mealEl&&!t.closest('[data-avulsmeal]')&&!t.closest('[data-resumomeal]')){S.meal=mealEl.dataset.meal;render();return;}
+
+      // 7. Dia do colaborador
+      const dayEl=t.closest('[data-day]');
+      if(dayEl){S.day=parseInt(dayEl.dataset.day);render();return;}
+
+      // 8. Dia do admin (cardápio)
+      const adayEl=t.closest('[data-adminday]');
+      if(adayEl){S.adminMenuDay=parseInt(adayEl.dataset.adminday);render();return;}
+
+      // 9. Cor
+      const colorEl=t.closest('[data-color]');
+      if(colorEl){S.obColor=colorEl.dataset.color;render();return;}
+
+      // 10. Item do cardápio (colaborador) — com voz
+      const itemEl=t.closest('[data-item]');
+      if(itemEl){
+        const id=itemEl.dataset.item;
+        let nome='';
+        const todayIdx=new Date().getDay();
+        Object.values(S.menu[S.meal]?.[todayIdx]||{}).flat().forEach(it=>{if(it.id===id)nome=it.name.replace(/^[\p{Emoji}\s]+/u,'').trim()||it.name;});
+        if(!nome)Object.values(S.menu[S.meal]||{}).forEach(d=>{if(typeof d==='object'&&!Array.isArray(d))Object.values(d).flat().forEach(it=>{if(it.id===id)nome=it.name.replace(/^[\p{Emoji}\s]+/u,'').trim()||it.name;});});
+        if(S.sel.has(id)){S.sel.delete(id);if(nome)VOZ.itemRemovido(nome);}
+        else{S.sel.add(id);if(nome)VOZ.itemSelecionado(nome);}
+        render();return;
+      }
+
+      // 11. Avulso
+      const avmEl=t.closest('[data-avulsmeal]');
+      if(avmEl){S.avulsoMeal=avmEl.dataset.avulsmeal;S.avulsoSel=new Set();render();return;}
+      const avdEl=t.closest('[data-avulsday]');
+      if(avdEl){S.avulsoDay=parseInt(avdEl.dataset.avulsday);S.avulsoSel=new Set();render();return;}
+      const aviEl=t.closest('[data-avulsoitem]');
+      if(aviEl){const id=aviEl.dataset.avulsoitem;if(S.avulsoSel.has(id))S.avulsoSel.delete(id);else S.avulsoSel.add(id);render();return;}
+
+      // 12. Resumo filtros
+      const rmEl=t.closest('[data-resumomeal]');
+      if(rmEl){S.resumoMeal=rmEl.dataset.resumomeal;render();return;}
+      const rvEl=t.closest('[data-resumoview]');
+      if(rvEl){S.resumoView=rvEl.dataset.resumoview;render();return;}
+      const rdEl=t.closest('[data-resumodate]');
+      if(rdEl){S.resumoDate=rdEl.dataset.resumodate;render();return;}
+      const rddEl=t.closest('[data-resumoday]');
+      if(rddEl){S.resumoDay=parseInt(rddEl.dataset.resumoday);render();return;}
+      const rmesEl=t.closest('[data-resumomes]');
+      if(rmesEl){S.resumoMes=rmesEl.dataset.resumomes;render();return;}
+
+      // 13. Remover item do cardápio
+      const rmItemEl=t.closest('[data-rmitem]');
+      if(rmItemEl){
+        const id=rmItemEl.dataset.rmitem;
+        Object.values(S.menu).forEach(mealObj=>{Object.values(mealObj).forEach(dayObj=>{if(typeof dayObj==='object'&&!Array.isArray(dayObj))Object.keys(dayObj).forEach(cat=>{dayObj[cat]=dayObj[cat].filter(it=>it.id!==id);});});});
+        if(db&&rid())fSet(`mh/${rid()}/menu/data`,S.menu);
+        render();return;
+      }
+
+    },true); // capture phase
+
+    // Voz — open-order e confirm-order (once listeners)
+    document.addEventListener('click',function(e){
+      const t=e.target.closest('[data-act]');
+      if(!t)return;
+      if(t.dataset.act==='open-order')setTimeout(()=>VOZ.confirmarPedido(S.sel.size),300);
+      if(t.dataset.act==='confirm-order')setTimeout(()=>VOZ.pedidoConfirmado(S._cn||S.confirmName),600);
     });
   }
-  const btnCancelarRetro=document.getElementById('btn-cancelar-retro');
-  if(btnCancelarRetro){
-    btnCancelarRetro.addEventListener('click',e=>{
-      e.stopImmediatePropagation();
-      e.stopPropagation();
-      S.overlay=null;render();
-    });
-  }
-  document.querySelectorAll('[data-act]').forEach(el=>{
-    el.addEventListener('click',e=>{
-      e.stopImmediatePropagation();
-      e.stopPropagation();
-      act(el.dataset.act);
-    });
-  });
-  document.querySelectorAll('[data-atab]').forEach(el=>el.addEventListener('click',()=>{S.atab=el.dataset.atab;if(S.atab!=='chats')S.threadUid=null;closeSidebar();render();}));
-  document.querySelectorAll('[data-ptab]').forEach(el=>el.addEventListener('click',()=>{S.portalTab=el.dataset.ptab;S.adminPassErr=false;render();}));
-  document.querySelectorAll('[data-meal]').forEach(el=>el.addEventListener('click',()=>{S.meal=el.dataset.meal;render();}));
-  document.querySelectorAll('[data-day]').forEach(el=>el.addEventListener('click',()=>{S.day=parseInt(el.dataset.day);render();}));
-  document.querySelectorAll('[data-item]').forEach(el=>el.addEventListener('click',()=>{const id=el.dataset.item;if(S.sel.has(id))S.sel.delete(id);else S.sel.add(id);render();}));
-  document.querySelectorAll('[data-color]').forEach(el=>el.addEventListener('click',()=>{S.obColor=el.dataset.color;render();}));
-  document.querySelectorAll('[data-avulsmeal]').forEach(el=>el.addEventListener('click',()=>{S.avulsoMeal=el.dataset.avulsmeal;S.avulsoSel=new Set();render();}));
-  document.querySelectorAll('[data-avulsday]').forEach(el=>el.addEventListener('click',()=>{S.avulsoDay=parseInt(el.dataset.avulsday);S.avulsoSel=new Set();render();}));
-  document.querySelectorAll('[data-avulsoitem]').forEach(el=>el.addEventListener('click',()=>{
-    const id=el.dataset.avulsoitem;
-    if(S.avulsoSel.has(id))S.avulsoSel.delete(id);else S.avulsoSel.add(id);
-    render();
-  }));
-  // Botão confirmar retroativo — listener direto como failsafe
-  const btnRetro=document.getElementById('btn-confirm-retro');
-  if(btnRetro){
-    btnRetro.onclick=null; // remove inline onclick
-    btnRetro.addEventListener('click',e=>{e.stopPropagation();e.preventDefault();act('confirm-retro');});
-  }
+
   // PDF date inputs
   const pdfFrom=document.getElementById('pdf-from');
   const pdfTo=document.getElementById('pdf-to');
